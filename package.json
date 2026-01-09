@@ -20,7 +20,15 @@
     "docker:build": "docker build -t iqr-shipstation-connector .",
     "docker:run": "docker run -p 3000:3000 --env-file .env iqr-shipstation-connector",
     "docker:dev": "docker-compose --profile dev up connector-dev",
-    "docker:prod": "docker-compose up -d connector"
+    "docker:prod": "docker-compose up -d connector",
+    "build:exe": "npm run build && pkg . --targets node18-win-x64 --output build/IQR-ShipStation-Connector.exe"
+  },
+  "bin": "dist/index.js",
+  "pkg": {
+    "assets": [
+      ".env.example"
+    ],
+    "outputPath": "build"
   },
   "keywords": [
     "iqreseller",

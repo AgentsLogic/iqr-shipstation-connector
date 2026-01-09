@@ -1,0 +1,38 @@
+================================================================================
+  QUICK START - 3 STEPS TO GET RUNNING
+================================================================================
+
+STEP 1: Get Your API Keys
+--------------------------
+IQ Reseller: Settings → API Settings → Copy API Key
+ShipStation: Account Settings → API Settings → Copy Key + Secret
+
+
+STEP 2: Setup .env File
+------------------------
+1. Open ".env.example" with Notepad
+2. Replace "your_xxx_here" with your actual API keys
+3. Save As → ".env" (not .env.txt!)
+4. Close Notepad
+
+
+STEP 3: Start It!
+-----------------
+1. Double-click "START_CONNECTOR.bat"
+2. Keep the window open
+3. Done! ✅
+
+
+TEST IT:
+--------
+Open browser → http://localhost:3001/health
+Should see: {"status":"healthy"}
+
+
+THAT'S IT! 🎉
+-------------
+Orders now sync automatically between IQ Reseller and ShipStation!
+
+
+Need detailed help? Read "README_FOR_CLIENTS.txt"
+

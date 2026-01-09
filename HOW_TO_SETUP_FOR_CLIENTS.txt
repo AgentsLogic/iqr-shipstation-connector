@@ -1,0 +1,312 @@
+================================================================================
+  HOW TO SET UP IQR-SHIPSTATION CONNECTOR FOR CLIENTS
+  (Step-by-Step Guide - No Technical Knowledge Required)
+================================================================================
+
+📋 WHAT THIS DOES:
+This software automatically syncs orders between IQ Reseller and ShipStation.
+When you get an order in IQ Reseller, it automatically creates it in ShipStation.
+When ShipStation ships an order, it automatically updates the tracking in IQ Reseller.
+
+
+================================================================================
+STEP 1: GET YOUR API KEYS (PASSWORDS FOR THE SOFTWARE)
+================================================================================
+
+🔑 FROM IQ RESELLER:
+1. Log into IQ Reseller website
+2. Go to Settings → API Settings (or ask IQ Reseller support)
+3. Copy your "API Key" - it's a long string of letters and numbers
+4. Save it in a notepad - you'll need it later
+
+🔑 FROM SHIPSTATION:
+1. Log into ShipStation website
+2. Click on your name (top right) → Account Settings
+3. Click "API Settings" on the left menu
+4. You'll see two things:
+   - API Key (looks like: a1b2c3d4e5f6...)
+   - API Secret (looks like: x9y8z7w6v5u4...)
+5. Copy BOTH and save them in notepad
+
+
+================================================================================
+STEP 2: DOWNLOAD THE SOFTWARE
+================================================================================
+
+1. Go to: https://github.com/AgentsLogic/iqr-shipstation-connector
+
+2. Click the green "Code" button
+
+3. Click "Download ZIP"
+
+4. Save it to your computer (like your Desktop or Documents folder)
+
+5. Right-click the ZIP file → "Extract All"
+
+6. You now have a folder called "iqr-shipstation-connector-main"
+
+
+================================================================================
+STEP 3: INSTALL NODE.JS (THE ENGINE THAT RUNS THE SOFTWARE)
+================================================================================
+
+1. Go to: https://nodejs.org
+
+2. Click the big green button that says "Download Node.js (LTS)"
+
+3. Run the installer you just downloaded
+
+4. Click "Next" → "Next" → "Next" → "Install"
+
+5. Wait for it to finish
+
+6. Click "Finish"
+
+7. Restart your computer (important!)
+
+
+================================================================================
+STEP 4: SET UP YOUR API KEYS
+================================================================================
+
+1. Open the folder you extracted in Step 2
+
+2. Find the file called ".env.example"
+
+3. Right-click it → "Open with" → "Notepad"
+
+4. You'll see something like this:
+
+   PORT=3001
+   NODE_ENV=production
+   IQR_API_KEY=your_iqr_api_key_here
+   IQR_AUTH_URL=https://signin.iqreseller.com
+   SHIPSTATION_API_KEY=your_shipstation_api_key_here
+   SHIPSTATION_API_SECRET=your_shipstation_api_secret_here
+   ...
+
+5. Replace the parts that say "your_xxx_here" with your actual keys:
+   
+   - Replace "your_iqr_api_key_here" with the IQ Reseller key you saved
+   - Replace "your_shipstation_api_key_here" with ShipStation API Key
+   - Replace "your_shipstation_api_secret_here" with ShipStation API Secret
+
+6. Click File → Save As
+
+7. Change the filename from ".env.example" to just ".env"
+   (Make sure it's ".env" NOT ".env.txt")
+
+8. Save it in the same folder
+
+9. Close Notepad
+
+
+================================================================================
+STEP 5: INSTALL THE SOFTWARE
+================================================================================
+
+1. Press the Windows key on your keyboard
+
+2. Type "cmd" and press Enter
+   (A black window will open - this is called Command Prompt)
+
+3. Type this command and press Enter:
+   cd Desktop\iqr-shipstation-connector-main
+   
+   (If you extracted the folder somewhere else, replace "Desktop" with that location)
+
+4. Type this command and press Enter:
+   npm install
+
+5. Wait... it will download a bunch of stuff (this takes 1-2 minutes)
+
+6. When it's done, you'll see a message and the cursor will be blinking again
+
+
+================================================================================
+STEP 6: START THE SOFTWARE
+================================================================================
+
+1. In the same black Command Prompt window, type:
+   npm start
+
+2. Press Enter
+
+3. You should see a fancy box that says:
+   "IQ Reseller ↔ ShipStation Connector"
+   "Server running on port 3001"
+
+4. ✅ IT'S WORKING! Leave this window open.
+
+⚠️ IMPORTANT: Don't close this black window! If you close it, the software stops.
+
+
+================================================================================
+STEP 7: TEST IF IT'S WORKING
+================================================================================
+
+1. Open your web browser (Chrome, Edge, Firefox, etc.)
+
+2. Go to: http://localhost:3001/health
+
+3. You should see something like:
+   {"status":"healthy","timestamp":"2026-01-09..."}
+
+4. ✅ If you see that, everything is working!
+
+5. Go to: http://localhost:3001/health/detailed
+
+6. This will test if it can connect to IQ Reseller and ShipStation
+
+7. You should see:
+   "iqr": "up"
+   "shipstation": "up"
+
+8. ✅ If both say "up", you're all set!
+
+
+================================================================================
+STEP 8: MAKE IT RUN AUTOMATICALLY (OPTIONAL BUT RECOMMENDED)
+================================================================================
+
+Right now, the software only runs when you have that black window open.
+To make it run automatically when your computer starts:
+
+OPTION A - EASY WAY (Windows Task Scheduler):
+
+1. Press Windows key + R
+
+2. Type: taskschd.msc and press Enter
+
+3. Click "Create Basic Task" on the right
+
+4. Name: "IQR ShipStation Connector"
+
+5. Click Next → Select "When the computer starts" → Next
+
+6. Select "Start a program" → Next
+
+7. Click Browse and find: C:\Program Files\nodejs\node.exe
+
+8. In "Add arguments" type: 
+   C:\Users\YOUR_USERNAME\Desktop\iqr-shipstation-connector-main\dist\index.js
+
+9. Click Next → Finish
+
+10. Restart your computer to test
+
+
+OPTION B - EASIER WAY (Use PM2 - Recommended for servers):
+
+1. In Command Prompt, type:
+   npm install -g pm2
+
+2. Press Enter and wait for it to install
+
+3. Type:
+   npm run build
+
+4. Press Enter and wait
+
+5. Type:
+   pm2 start ecosystem.config.js
+
+6. Type:
+   pm2 save
+
+7. Type:
+   pm2 startup
+
+8. Copy the command it shows you and paste it, then press Enter
+
+9. ✅ Done! It will now run automatically even after restarts
+
+
+================================================================================
+TROUBLESHOOTING - IF SOMETHING GOES WRONG
+================================================================================
+
+❌ "Cannot find module" error:
+   → Go back to Step 5 and run "npm install" again
+
+❌ "Port 3001 is already in use":
+   → Something else is using that port
+   → In the .env file, change PORT=3001 to PORT=3002
+
+❌ "IQR authentication failed":
+   → Check your IQR_API_KEY in the .env file
+   → Make sure you copied it correctly (no extra spaces)
+
+❌ "ShipStation authentication failed":
+   → Check your SHIPSTATION_API_KEY and SHIPSTATION_API_SECRET
+   → Make sure you copied both correctly
+
+❌ Black window closes immediately:
+   → There's an error in your .env file
+   → Open .env and check all the values are correct
+
+❌ "npm is not recognized":
+   → Node.js didn't install correctly
+   → Go back to Step 3 and reinstall Node.js
+   → Make sure to restart your computer after
+
+
+================================================================================
+HOW TO KNOW IT'S WORKING
+================================================================================
+
+✅ The black Command Prompt window is open and shows the server running
+
+✅ When you go to http://localhost:3001/health you see "healthy"
+
+✅ Orders from IQ Reseller appear in ShipStation automatically
+
+✅ When you ship in ShipStation, tracking updates in IQ Reseller
+
+
+================================================================================
+HOW TO STOP THE SOFTWARE
+================================================================================
+
+1. Go to the black Command Prompt window
+
+2. Press Ctrl + C on your keyboard
+
+3. Type "Y" and press Enter
+
+4. The software is now stopped
+
+
+================================================================================
+HOW TO START IT AGAIN
+================================================================================
+
+1. Press Windows key, type "cmd", press Enter
+
+2. Type: cd Desktop\iqr-shipstation-connector-main
+
+3. Type: npm start
+
+4. Press Enter
+
+
+================================================================================
+NEED HELP?
+================================================================================
+
+📧 Email: agentslogic@gmail.com
+
+📞 Or contact whoever gave you this software
+
+🌐 GitHub: https://github.com/AgentsLogic/iqr-shipstation-connector
+
+
+================================================================================
+THAT'S IT! YOU'RE DONE! 🎉
+================================================================================
+
+The software is now running and will automatically sync orders between
+IQ Reseller and ShipStation.
+
+You don't need to do anything else - it works in the background!
+
