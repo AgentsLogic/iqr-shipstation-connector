@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # IQR-ShipStation Connector
+  connector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: iqr-shipstation-connector
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # IQ Reseller Configuration
+      - IQR_API_KEY=${IQR_API_KEY}
+      - IQR_AUTH_URL=${IQR_AUTH_URL:-https://signin.iqreseller.com}
+      - IQR_API_BASE_URL=${IQR_API_BASE_URL:-https://api.iqreseller.com}
+      # ShipStation Configuration
+      - SHIPSTATION_API_KEY=${SHIPSTATION_API_KEY}
+      - SHIPSTATION_API_SECRET=${SHIPSTATION_API_SECRET}
+      - SHIPSTATION_API_BASE_URL=${SHIPSTATION_API_BASE_URL:-https://ssapi.shipstation.com}
+      - SHIPSTATION_WEBHOOK_SECRET=${SHIPSTATION_WEBHOOK_SECRET}
+      # Sync Configuration
+      - SYNC_INTERVAL_MINUTES=${SYNC_INTERVAL_MINUTES:-15}
+      - SYNC_BATCH_SIZE=${SYNC_BATCH_SIZE:-50}
+      - SYNC_MAX_RETRIES=${SYNC_MAX_RETRIES:-3}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Development service with hot reload
+  connector-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: iqr-shipstation-connector-dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./src:/app/src:ro
+      - ./package.json:/app/package.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - IQR_API_KEY=${IQR_API_KEY}
+      - IQR_AUTH_URL=${IQR_AUTH_URL:-https://signin.iqreseller.com}
+      - IQR_API_BASE_URL=${IQR_API_BASE_URL:-https://api.iqreseller.com}
+      - SHIPSTATION_API_KEY=${SHIPSTATION_API_KEY}
+      - SHIPSTATION_API_SECRET=${SHIPSTATION_API_SECRET}
+      - SHIPSTATION_API_BASE_URL=${SHIPSTATION_API_BASE_URL:-https://ssapi.shipstation.com}
+      - SHIPSTATION_WEBHOOK_SECRET=${SHIPSTATION_WEBHOOK_SECRET}
+      - SYNC_INTERVAL_MINUTES=${SYNC_INTERVAL_MINUTES:-0}
+    profiles:
+      - dev
+

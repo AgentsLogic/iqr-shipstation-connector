@@ -1,0 +1,175 @@
+/**
+ * Order Sync Service
+ * 
+ * Handles synchronization of orders from IQ Reseller to ShipStation
+ */
+
+import { iqrClient, IQROrder } from '../clients/iqr-client';
+import { shipStationClient, ShipStationOrder } from '../clients/shipstation-client';
+import { config } from '../config';
+import { logger } from '../utils/logger';
+import { processInBatches } from '../utils/parallel';
+import { performanceMonitor } from '../utils/performance';
+
+export interface SyncResult {
+  success: boolean;
+  ordersProcessed: number;
+  ordersFailed: number;
+  errors: Array<{ orderNumber: string; error: string }>;
+}
+
+/**
+ * Transform an IQR order to ShipStation format
+ */
+function transformOrder(iqrOrder: IQROrder): ShipStationOrder {
+  return {
+    orderNumber: iqrOrder.orderNumber,
+    orderKey: `IQR-${iqrOrder.orderId}`, // Unique key for idempotency
+    orderDate: iqrOrder.orderDate,
+    orderStatus: 'awaiting_shipment',
+    customerEmail: iqrOrder.customerEmail,
+    shipTo: {
+      name: iqrOrder.customerName,
+      street1: iqrOrder.shippingAddress.street1,
+      street2: iqrOrder.shippingAddress.street2,
+      city: iqrOrder.shippingAddress.city,
+      state: iqrOrder.shippingAddress.state,
+      postalCode: iqrOrder.shippingAddress.postalCode,
+      country: iqrOrder.shippingAddress.country,
+    },
+    items: iqrOrder.lineItems.map(item => ({
+      sku: item.sku,
+      name: item.name,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      weight: item.weight ? { value: item.weight, units: 'pounds' as const } : undefined,
+    })),
+    advancedOptions: {
+      customField1: `IQR Order ID: ${iqrOrder.orderId}`,
+    },
+  };
+}
+
+/**
+ * Sync orders from IQ Reseller to ShipStation
+ */
+export async function syncOrders(options?: {
+  fromDate?: string;
+  toDate?: string;
+  orderStatus?: string;
+}): Promise<SyncResult> {
+  const result: SyncResult = {
+    success: true,
+    ordersProcessed: 0,
+    ordersFailed: 0,
+    errors: [],
+  };
+
+  logger.syncStart('Order', options);
+  performanceMonitor.start('order-sync-full');
+
+  try {
+    // Fetch orders from IQ Reseller
+    performanceMonitor.start('fetch-orders');
+    const orders = await iqrClient.getOrders({
+      status: options?.orderStatus,
+      fromDate: options?.fromDate,
+      toDate: options?.toDate,
+    });
+    performanceMonitor.end('fetch-orders', { count: orders.length });
+
+    logger.info('Orders fetched from IQR', { count: orders.length });
+
+    if (orders.length === 0) {
+      performanceMonitor.end('order-sync-full');
+      return result;
+    }
+
+    // Process orders in batches with parallel processing
+    performanceMonitor.start('process-orders');
+
+    await processInBatches(
+      orders,
+      async (iqrOrder) => {
+        try {
+          const shipStationOrder = transformOrder(iqrOrder);
+          await shipStationClient.createOrder(shipStationOrder);
+          result.ordersProcessed++;
+          logger.debug('Order synced to ShipStation', {
+            orderNumber: iqrOrder.orderNumber,
+            orderId: iqrOrder.orderId,
+          });
+        } catch (error) {
+          result.ordersFailed++;
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          result.errors.push({
+            orderNumber: iqrOrder.orderNumber,
+            error: errorMessage,
+          });
+          logger.error('Failed to sync order', error as Error, {
+            orderNumber: iqrOrder.orderNumber,
+            orderId: iqrOrder.orderId,
+          });
+        }
+      },
+      config.sync.batchSize,
+      5, // Concurrency: 5 parallel requests
+      500 // 500ms delay between batches
+    );
+
+    performanceMonitor.end('process-orders', {
+      processed: result.ordersProcessed,
+      failed: result.ordersFailed,
+    });
+  } catch (error) {
+    result.success = false;
+    logger.syncError('Order', error as Error);
+    performanceMonitor.end('order-sync-full', { success: false });
+    throw error;
+  } finally {
+    // End the IQR session
+    await iqrClient.endSession();
+  }
+
+  const duration = performanceMonitor.end('order-sync-full', {
+    processed: result.ordersProcessed,
+    failed: result.ordersFailed,
+    success: true,
+  });
+
+  logger.syncComplete('Order', {
+    processed: result.ordersProcessed,
+    failed: result.ordersFailed,
+    duration,
+  });
+
+  // Log performance stats
+  const stats = performanceMonitor.getAllStats();
+  logger.info('Sync performance metrics', { stats });
+
+  return result;
+}
+
+/**
+ * Run the sync on a schedule
+ */
+export function startScheduledSync(): void {
+  const intervalMs = config.sync.intervalMinutes * 60 * 1000;
+
+  logger.info('Scheduled sync initialized', {
+    intervalMinutes: config.sync.intervalMinutes,
+  });
+
+  // Run immediately on start
+  syncOrders().catch((error) => {
+    logger.error('Scheduled sync failed', error);
+  });
+
+  // Then run on schedule
+  setInterval(() => {
+    syncOrders().catch((error) => {
+      logger.error('Scheduled sync failed', error);
+    });
+  }, intervalMs);
+}
+
