@@ -21,7 +21,9 @@
     "docker:run": "docker run -p 3000:3000 --env-file .env iqr-shipstation-connector",
     "docker:dev": "docker-compose --profile dev up connector-dev",
     "docker:prod": "docker-compose up -d connector",
-    "build:exe": "npm run build && pkg . --targets node18-win-x64 --output build/IQR-ShipStation-Connector.exe"
+    "build:exe": "npm run build && pkg . --targets node18-win-x64 --output build/IQR-ShipStation-Connector.exe",
+    "build:installer": "powershell -ExecutionPolicy Bypass -File build-installer.ps1",
+    "build:all": "npm run build:exe && npm run build:installer"
   },
   "bin": "dist/index.js",
   "pkg": {
