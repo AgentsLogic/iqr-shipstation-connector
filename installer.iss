@@ -23,7 +23,7 @@ AllowNoIcons=yes
 LicenseFile=LICENSE
 OutputDir=installer-output
 OutputBaseFilename=IQR-ShipStation-Connector-Setup
-SetupIconFile=installer-icon.ico
+; SetupIconFile=installer-icon.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -61,14 +61,13 @@ Filename: "notepad.exe"; Parameters: "{app}\.env.example"; Description: "Configu
 [Code]
 var
   ConfigPage: TInputQueryWizardPage;
-  IQRApiKey, ShipStationApiKey, ShipStationApiSecret: String;
 
 procedure InitializeWizard;
 begin
   ConfigPage := CreateInputQueryPage(wpSelectTasks,
     'API Configuration', 'Enter your API keys',
     'You can enter your API keys now, or configure them later by editing the .env file.');
-  
+
   ConfigPage.Add('IQ Reseller API Key:', False);
   ConfigPage.Add('ShipStation API Key:', False);
   ConfigPage.Add('ShipStation API Secret:', False);
@@ -78,27 +77,35 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var
   EnvContent: TStringList;
   EnvFile: String;
+  i: Integer;
+  Line: String;
+  IQRApiKey, ShipStationApiKey, ShipStationApiSecret: String;
 begin
   if CurStep = ssPostInstall then
   begin
     IQRApiKey := ConfigPage.Values[0];
     ShipStationApiKey := ConfigPage.Values[1];
     ShipStationApiSecret := ConfigPage.Values[2];
-    
+
     if (IQRApiKey <> '') or (ShipStationApiKey <> '') or (ShipStationApiSecret <> '') then
     begin
       EnvFile := ExpandConstant('{app}\.env');
       EnvContent := TStringList.Create;
       try
         EnvContent.LoadFromFile(ExpandConstant('{app}\.env.example'));
-        
-        if IQRApiKey <> '' then
-          EnvContent.Values['IQR_API_KEY'] := IQRApiKey;
-        if ShipStationApiKey <> '' then
-          EnvContent.Values['SHIPSTATION_API_KEY'] := ShipStationApiKey;
-        if ShipStationApiSecret <> '' then
-          EnvContent.Values['SHIPSTATION_API_SECRET'] := ShipStationApiSecret;
-        
+
+        for i := 0 to EnvContent.Count - 1 do
+        begin
+          Line := EnvContent[i];
+
+          if (IQRApiKey <> '') and (Pos('IQR_API_KEY=', Line) = 1) then
+            EnvContent[i] := 'IQR_API_KEY=' + IQRApiKey
+          else if (ShipStationApiKey <> '') and (Pos('SHIPSTATION_API_KEY=', Line) = 1) then
+            EnvContent[i] := 'SHIPSTATION_API_KEY=' + ShipStationApiKey
+          else if (ShipStationApiSecret <> '') and (Pos('SHIPSTATION_API_SECRET=', Line) = 1) then
+            EnvContent[i] := 'SHIPSTATION_API_SECRET=' + ShipStationApiSecret;
+        end;
+
         EnvContent.SaveToFile(EnvFile);
       finally
         EnvContent.Free;
