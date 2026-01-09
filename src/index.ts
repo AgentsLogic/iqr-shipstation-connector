@@ -58,6 +58,216 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // Health check routes (includes /health, /health/detailed, /ready, /live)
 app.use(healthRoutes);
 
+// Beautiful homepage/dashboard
+app.get('/', async (_req: Request, res: Response) => {
+  // Get service status
+  let iqrStatus = '🔄 Checking...';
+  let shipstationStatus = '🔄 Checking...';
+  let overallStatus = 'checking';
+
+  try {
+    const healthResponse = await fetch('http://localhost:' + config.server.port + '/health/detailed');
+    const health = await healthResponse.json() as any;
+    iqrStatus = health.services?.iqr === 'up' ? '✅ Connected' : '❌ Disconnected';
+    shipstationStatus = health.services?.shipstation === 'up' ? '✅ Connected' : '❌ Disconnected';
+    overallStatus = health.status === 'healthy' ? 'healthy' : 'unhealthy';
+  } catch {
+    iqrStatus = '⚠️ Unknown';
+    shipstationStatus = '⚠️ Unknown';
+    overallStatus = 'unknown';
+  }
+
+  const uptimeSeconds = process.uptime();
+  const uptimeFormatted = formatUptime(uptimeSeconds);
+  const statusColor = overallStatus === 'healthy' ? '#10b981' : overallStatus === 'unhealthy' ? '#ef4444' : '#f59e0b';
+  const statusEmoji = overallStatus === 'healthy' ? '🟢' : overallStatus === 'unhealthy' ? '🔴' : '🟡';
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IQR ↔ ShipStation Connector</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 24px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+      max-width: 500px;
+      width: 100%;
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+      padding: 32px;
+      text-align: center;
+      color: white;
+    }
+    .header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .header p {
+      opacity: 0.9;
+      font-size: 14px;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: ${statusColor}22;
+      border: 2px solid ${statusColor};
+      color: ${statusColor};
+      padding: 8px 16px;
+      border-radius: 50px;
+      font-weight: 600;
+      font-size: 14px;
+      margin-top: 16px;
+      text-transform: uppercase;
+    }
+    .content {
+      padding: 32px;
+    }
+    .card {
+      background: #f8fafc;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .card:last-child { margin-bottom: 0; }
+    .card-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+    .service-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .service-row:last-child { border-bottom: none; }
+    .service-name {
+      font-weight: 500;
+      color: #334155;
+    }
+    .service-status {
+      font-size: 14px;
+    }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .stat {
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    .footer {
+      text-align: center;
+      padding: 20px 32px 32px;
+      color: #94a3b8;
+      font-size: 12px;
+    }
+    .footer a {
+      color: #3b82f6;
+      text-decoration: none;
+    }
+    .pulse {
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📦 IQR ↔ ShipStation</h1>
+      <p>Order Synchronization Connector</p>
+      <div class="status-badge">
+        <span>${statusEmoji}</span>
+        <span>${overallStatus === 'healthy' ? 'All Systems Operational' : overallStatus === 'unhealthy' ? 'System Issues Detected' : 'Checking Status...'}</span>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="card">
+        <div class="card-title">🔗 Service Connections</div>
+        <div class="service-row">
+          <span class="service-name">IQ Reseller API</span>
+          <span class="service-status">${iqrStatus}</span>
+        </div>
+        <div class="service-row">
+          <span class="service-name">ShipStation API</span>
+          <span class="service-status">${shipstationStatus}</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📊 System Info</div>
+        <div class="stat-grid">
+          <div class="stat">
+            <div class="stat-value">${config.sync.intervalMinutes}</div>
+            <div class="stat-label">Sync Interval (min)</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">${uptimeFormatted}</div>
+            <div class="stat-label">Uptime</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <p>v1.0.0 • Running on <a href="https://render.com" target="_blank">Render</a></p>
+      <p style="margin-top: 8px;">Auto-syncing orders every ${config.sync.intervalMinutes} minutes</p>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// Helper function to format uptime
+function formatUptime(seconds: number): string {
+  if (seconds < 60) return Math.floor(seconds) + 's';
+  if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
+  if (seconds < 86400) return Math.floor(seconds / 3600) + 'h';
+  return Math.floor(seconds / 86400) + 'd';
+}
+
 // Manual sync trigger endpoint
 app.post('/api/sync/orders', async (req: Request, res: Response, next: NextFunction) => {
   try {
