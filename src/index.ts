@@ -17,6 +17,7 @@ import { logger } from './utils/logger';
 import { validateEnv, printEnvSummary } from './utils/env-validator';
 import { errorHandler, notFoundHandler } from './middleware/error-handler';
 import healthRoutes from './routes/health.routes';
+import { activityTracker } from './utils/activity-tracker';
 
 // Validate environment variables on startup
 try {
@@ -77,10 +78,26 @@ app.get('/', async (_req: Request, res: Response) => {
     overallStatus = 'unknown';
   }
 
+  // Get activity stats
+  const stats = activityTracker.getStats();
+  const lastSyncTime = stats.last24Hours.lastSyncTime
+    ? formatTimeAgo(stats.last24Hours.lastSyncTime)
+    : 'Never';
+
   const uptimeSeconds = process.uptime();
   const uptimeFormatted = formatUptime(uptimeSeconds);
   const statusColor = overallStatus === 'healthy' ? '#10b981' : overallStatus === 'unhealthy' ? '#ef4444' : '#f59e0b';
   const statusEmoji = overallStatus === 'healthy' ? '🟢' : overallStatus === 'unhealthy' ? '🔴' : '🟡';
+
+  // Build recent activity HTML
+  const activityHtml = stats.recentActivity.length > 0
+    ? stats.recentActivity.map(a => {
+        const icon = a.type === 'sync' ? (a.success ? '✅' : '❌') : a.type === 'webhook' ? '🔔' : '⚠️';
+        const time = formatTimeAgo(a.timestamp);
+        const msg = a.message || (a.type === 'sync' ? 'Processed ' + a.ordersProcessed + ' orders' : 'Activity');
+        return '<div class="activity-row"><span class="activity-icon">' + icon + '</span><span class="activity-msg">' + msg + '</span><span class="activity-time">' + time + '</span></div>';
+      }).join('')
+    : '<div class="no-activity">No activity yet. First sync will happen soon!</div>';
 
   const html = `
 <!DOCTYPE html>
@@ -206,6 +223,43 @@ app.get('/', async (_req: Request, res: Response) => {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.6; }
     }
+    .activity-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .activity-row:last-child { border-bottom: none; }
+    .activity-icon { font-size: 16px; }
+    .activity-msg {
+      flex: 1;
+      font-size: 13px;
+      color: #475569;
+    }
+    .activity-time {
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    .no-activity {
+      text-align: center;
+      color: #94a3b8;
+      padding: 20px;
+      font-size: 13px;
+    }
+    .stat-grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+    .stat-small .stat-value {
+      font-size: 20px;
+    }
+    .stat-small .stat-label {
+      font-size: 10px;
+    }
+    .success-text { color: #10b981; }
+    .error-text { color: #ef4444; }
   </style>
 </head>
 <body>
@@ -233,11 +287,33 @@ app.get('/', async (_req: Request, res: Response) => {
       </div>
 
       <div class="card">
+        <div class="card-title">📈 Last 24 Hours</div>
+        <div class="stat-grid-4">
+          <div class="stat stat-small">
+            <div class="stat-value">${stats.last24Hours.totalSyncs}</div>
+            <div class="stat-label">Syncs</div>
+          </div>
+          <div class="stat stat-small">
+            <div class="stat-value success-text">${stats.last24Hours.ordersProcessed}</div>
+            <div class="stat-label">Orders Synced</div>
+          </div>
+          <div class="stat stat-small">
+            <div class="stat-value error-text">${stats.last24Hours.ordersFailed}</div>
+            <div class="stat-label">Failed</div>
+          </div>
+          <div class="stat stat-small">
+            <div class="stat-value">${lastSyncTime}</div>
+            <div class="stat-label">Last Sync</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-title">📊 System Info</div>
         <div class="stat-grid">
           <div class="stat">
-            <div class="stat-value">${config.sync.intervalMinutes}</div>
-            <div class="stat-label">Sync Interval (min)</div>
+            <div class="stat-value">${config.sync.intervalMinutes}m</div>
+            <div class="stat-label">Sync Interval</div>
           </div>
           <div class="stat">
             <div class="stat-value">${uptimeFormatted}</div>
@@ -245,11 +321,16 @@ app.get('/', async (_req: Request, res: Response) => {
           </div>
         </div>
       </div>
+
+      <div class="card">
+        <div class="card-title">🕐 Recent Activity</div>
+        ${activityHtml}
+      </div>
     </div>
 
     <div class="footer">
       <p>v1.0.0 • Running on <a href="https://render.com" target="_blank">Render</a></p>
-      <p style="margin-top: 8px;">Auto-syncing orders every ${config.sync.intervalMinutes} minutes</p>
+      <p style="margin-top: 8px;">Auto-syncing orders every ${config.sync.intervalMinutes} minutes • Last updated: ${new Date().toLocaleTimeString()}</p>
     </div>
   </div>
 </body>
@@ -267,6 +348,21 @@ function formatUptime(seconds: number): string {
   if (seconds < 86400) return Math.floor(seconds / 3600) + 'h';
   return Math.floor(seconds / 86400) + 'd';
 }
+
+// Helper function to format time ago
+function formatTimeAgo(date: Date): string {
+  const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+  if (seconds < 60) return 'Just now';
+  if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+  if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+  return Math.floor(seconds / 86400) + 'd ago';
+}
+
+// API endpoint to get activity stats
+app.get('/api/stats', (_req: Request, res: Response) => {
+  const stats = activityTracker.getStats();
+  res.json(stats);
+});
 
 // Manual sync trigger endpoint
 app.post('/api/sync/orders', async (req: Request, res: Response, next: NextFunction) => {

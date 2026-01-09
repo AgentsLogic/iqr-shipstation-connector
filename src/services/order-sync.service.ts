@@ -10,6 +10,7 @@ import { config } from '../config';
 import { logger } from '../utils/logger';
 import { processInBatches } from '../utils/parallel';
 import { performanceMonitor } from '../utils/performance';
+import { activityTracker } from '../utils/activity-tracker';
 
 export interface SyncResult {
   success: boolean;
@@ -125,6 +126,12 @@ export async function syncOrders(options?: {
     result.success = false;
     logger.syncError('Order', error as Error);
     performanceMonitor.end('order-sync-full', { success: false });
+
+    // Track the error
+    activityTracker.recordError(
+      error instanceof Error ? error.message : 'Unknown sync error'
+    );
+
     throw error;
   } finally {
     // End the IQR session
@@ -141,6 +148,17 @@ export async function syncOrders(options?: {
     processed: result.ordersProcessed,
     failed: result.ordersFailed,
     duration,
+  });
+
+  // Track activity
+  activityTracker.recordSync({
+    success: result.success,
+    ordersProcessed: result.ordersProcessed,
+    ordersFailed: result.ordersFailed,
+    duration: duration || 0,
+    message: result.ordersProcessed > 0
+      ? `Synced ${result.ordersProcessed} orders`
+      : 'No new orders to sync',
   });
 
   // Log performance stats
