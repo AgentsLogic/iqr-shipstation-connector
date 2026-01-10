@@ -157,6 +157,11 @@ export class IQRClient {
       url += `?${params.toString()}`;
     }
 
+    console.log(`[IQRClient] ${method} ${url}`);
+    if (options?.body) {
+      console.log('[IQRClient] Request body:', JSON.stringify(options.body));
+    }
+
     const response = await fetch(url, {
       method,
       headers: {
@@ -186,7 +191,7 @@ export class IQRClient {
 
   /**
    * Get Sales Orders from IQ Reseller
-   * Endpoint verified from Postman collection
+   * Trying multiple endpoint patterns based on IQR API documentation
    */
   async getOrders(params?: {
     status?: string;
@@ -195,18 +200,19 @@ export class IQRClient {
   }): Promise<IQROrder[]> {
     console.log('[IQRClient] Fetching sales orders...');
 
-    // Build query parameters according to IQR API spec
-    const queryParams: Record<string, string | number> = {
+    // Try POST method with body params (matching CV endpoint pattern from docs)
+    const body = {
       Page: 0,      // 0 for all results
-      PageSize: 0,  // 0 for all results
+      PageSize: 100,  // Get first 100 orders
       SortBy: 0,
     };
 
+    // Try lowercase 'json' pattern first (matches /CV/json/GetCVs from docs)
     const response = await this.request<{ Data: IQROrder[] }>(
-      '/webapi.svc/SO/JSON/GetSOs',
+      '/webapi.svc/SO/json/GetSOs',
       {
-        method: 'GET',
-        queryParams,
+        method: 'POST',
+        body,
       }
     );
     console.log('[IQRClient] Received', response.Data?.length || 0, 'orders');
