@@ -95,9 +95,34 @@ Amazon/eBay (B2C) ────────►
 
 ---
 
-## 4. Data Flow Specifications
+## 4. Business Logic & Sync Rules
 
-### 4.1 IQR → ShipStation (Order Push)
+### 4.1 Order Sync Criteria (IQR → ShipStation)
+
+**Status Filter:**
+- Sync orders where `status == "Open"` OR `status == "Partial"`
+
+**Customer/Channel Filter:**
+- Only sync orders from Agent channel: **"DPC - QUIC"**
+- Field to check: TBD (need to confirm with IQR API response)
+
+**Sync Frequency:**
+- **15 minutes** (scheduled polling)
+
+**Date Range:**
+- Configurable (default: orders from last 30 days)
+- Prevents syncing old historical orders
+
+**Idempotency:**
+- Use IQR Order ID as ShipStation `orderNumber`
+- Check if order already exists in ShipStation before creating
+- Update existing orders if changes detected
+
+---
+
+## 5. Data Flow Specifications
+
+### 5.1 IQR → ShipStation (Order Push)
 
 **Trigger Options:**
 - Real-time: Webhook/event from IQR when order is created/approved

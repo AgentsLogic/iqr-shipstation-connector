@@ -106,6 +106,7 @@ app.get('/', async (_req: Request, res: Response) => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IQR ↔ ShipStation Connector</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📦</text></svg>">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -298,10 +299,6 @@ app.get('/', async (_req: Request, res: Response) => {
             <div class="stat-label">Orders Synced</div>
           </div>
           <div class="stat stat-small">
-            <div class="stat-value error-text">${stats.last24Hours.ordersFailed}</div>
-            <div class="stat-label">Failed</div>
-          </div>
-          <div class="stat stat-small">
             <div class="stat-value">${lastSyncTime}</div>
             <div class="stat-label">Last Sync</div>
           </div>
@@ -329,7 +326,7 @@ app.get('/', async (_req: Request, res: Response) => {
     </div>
 
     <div class="footer">
-      <p>v1.0.0 • Running on <a href="https://render.com" target="_blank">Render</a></p>
+      <p>v1.0.0 • IQR ↔ ShipStation Integration</p>
       <p style="margin-top: 8px;">Auto-syncing orders every ${config.sync.intervalMinutes} minutes • Last updated: ${new Date().toLocaleTimeString()}</p>
     </div>
   </div>

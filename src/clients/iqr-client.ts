@@ -7,6 +7,42 @@
 
 import { config } from '../config';
 
+// Raw IQR API response structure
+export interface IQRRawOrder {
+  so: number;
+  status: string;
+  clientid: string;
+  shiptocompany: string;
+  shiptoaddress1: string;
+  shiptoaddress2?: string;
+  shiptoaddress3?: string;
+  shiptocity: string;
+  shiptostate: string;
+  shiptopostalcode: string;
+  shiptocountry: string;
+  shiptoemail?: string;
+  shiptocontact?: string;
+  shiptophone?: string;
+  saledate: string;
+  total: number;
+  SODetails: Array<{
+    item: string;
+    description: string;
+    quantity: number;
+    unitprice: number;
+    serialnumber?: string;
+    mfgr?: string;
+    condition?: string;
+  }>;
+  // Custom fields that might contain agent channel
+  userdefined1?: string;
+  userdefined2?: string;
+  userdefined3?: string;
+  userdefined4?: string;
+  userdefined5?: string;
+}
+
+// Transformed order format for our application
 export interface IQROrder {
   orderId: string;
   orderNumber: string;
@@ -29,7 +65,8 @@ export interface IQROrder {
     weight?: number;
   }>;
   status: string;
-  // Add more fields as needed based on IQR API response
+  // Keep raw order for reference
+  raw: IQRRawOrder;
 }
 
 export interface IQRTrackingUpdate {
@@ -190,8 +227,39 @@ export class IQRClient {
   }
 
   /**
+   * Transform raw IQR order to our application format
+   */
+  private transformOrder(rawOrder: IQRRawOrder): IQROrder {
+    return {
+      orderId: String(rawOrder.so),
+      orderNumber: String(rawOrder.so),
+      orderDate: rawOrder.saledate,
+      customerName: rawOrder.shiptocompany || rawOrder.clientid,
+      customerEmail: rawOrder.shiptoemail,
+      shippingAddress: {
+        street1: rawOrder.shiptoaddress1 || '',
+        street2: rawOrder.shiptoaddress2 || rawOrder.shiptoaddress3,
+        city: rawOrder.shiptocity || '',
+        state: rawOrder.shiptostate || '',
+        postalCode: rawOrder.shiptopostalcode || '',
+        country: rawOrder.shiptocountry || 'US',
+      },
+      lineItems: (rawOrder.SODetails || []).map(detail => ({
+        sku: detail.item,
+        name: detail.description?.trim() || detail.item,
+        quantity: detail.quantity,
+        unitPrice: detail.unitprice,
+        weight: undefined, // IQR doesn't provide weight in API
+      })),
+      status: rawOrder.status?.trim() || '',
+      raw: rawOrder,
+    };
+  }
+
+  /**
    * Get Sales Orders from IQ Reseller
-   * Trying multiple endpoint patterns based on IQR API documentation
+   * Endpoint confirmed working: GET /webapi.svc/SO/JSON/GetSOs
+   * Returns array of orders directly (not wrapped in Data property)
    */
   async getOrders(params?: {
     status?: string;
@@ -200,31 +268,125 @@ export class IQRClient {
   }): Promise<IQROrder[]> {
     console.log('[IQRClient] Fetching sales orders...');
 
-    // Try POST method with body params (matching CV endpoint pattern from docs)
-    const body = {
-      Page: 0,      // 0 for all results
-      PageSize: 100,  // Get first 100 orders
-      SortBy: 0,
-    };
-
-    // Try lowercase 'json' pattern first (matches /CV/json/GetCVs from docs)
-    const response = await this.request<{ Data: IQROrder[] }>(
-      '/webapi.svc/SO/json/GetSOs',
+    // Use GET method - confirmed working in Postman
+    const rawOrders = await this.request<IQRRawOrder[]>(
+      '/webapi.svc/SO/JSON/GetSOs',
       {
-        method: 'POST',
-        body,
+        method: 'GET',
       }
     );
-    console.log('[IQRClient] Received', response.Data?.length || 0, 'orders');
-    return response.Data || [];
+
+    console.log('[IQRClient] Received', rawOrders?.length || 0, 'raw orders');
+
+    // Transform to our format
+    const orders = (rawOrders || []).map(raw => this.transformOrder(raw));
+    console.log('[IQRClient] Transformed', orders.length, 'orders');
+
+    return orders;
+  }
+
+  /**
+   * Filter orders by status
+   * Business Logic: Sync orders with status "Open" OR "Partial"
+   */
+  filterByStatus(orders: IQROrder[], statuses: string[]): IQROrder[] {
+    return orders.filter(order => {
+      const orderStatus = order.status;
+      return statuses.some(status =>
+        orderStatus.toLowerCase() === status.toLowerCase()
+      );
+    });
+  }
+
+  /**
+   * Filter orders by date range
+   * Business Logic: Only sync orders from last N days (default 30)
+   */
+  filterByDateRange(orders: IQROrder[], daysBack: number): IQROrder[] {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysBack);
+
+    return orders.filter(order => {
+      if (!order.orderDate) return false;
+      const saleDate = new Date(order.orderDate);
+      return saleDate >= cutoffDate;
+    });
+  }
+
+  /**
+   * Filter orders by agent channel
+   * TODO: Need to confirm which field contains "DPC - QUIC"
+   * Possible fields: userdefined1-5, clientid, shipfromclientid, rep
+   */
+  filterByAgentChannel(orders: IQROrder[], channelName: string): IQROrder[] {
+    console.warn('[IQRClient] Agent channel filtering not yet implemented - need field mapping from IQR team');
+    // TODO: Implement once we know which field contains the agent channel
+    // Check all possible fields in the raw order
+    return orders.filter(order => {
+      const raw = order.raw;
+      const searchValue = channelName.toLowerCase();
+
+      // Check all user-defined fields
+      const fields = [
+        raw.userdefined1,
+        raw.userdefined2,
+        raw.userdefined3,
+        raw.userdefined4,
+        raw.userdefined5,
+      ];
+
+      return fields.some(field =>
+        field && field.toLowerCase().includes(searchValue)
+      );
+    });
+  }
+
+  /**
+   * Get orders ready to sync to ShipStation
+   * Applies all business logic filters
+   */
+  async getOrdersToSync(options?: {
+    statuses?: string[];
+    daysBack?: number;
+    agentChannel?: string;
+  }): Promise<IQROrder[]> {
+    const statuses = options?.statuses || ['Open', 'Partial'];
+    const daysBack = options?.daysBack || 30;
+    const agentChannel = options?.agentChannel;
+
+    console.log('[IQRClient] Fetching orders to sync with filters:', {
+      statuses,
+      daysBack,
+      agentChannel
+    });
+
+    let orders = await this.getOrders();
+    console.log(`[IQRClient] Fetched ${orders.length} total orders`);
+
+    // Apply status filter
+    orders = this.filterByStatus(orders, statuses);
+    console.log(`[IQRClient] After status filter (${statuses.join(', ')}): ${orders.length} orders`);
+
+    // Apply date range filter
+    orders = this.filterByDateRange(orders, daysBack);
+    console.log(`[IQRClient] After date filter (last ${daysBack} days): ${orders.length} orders`);
+
+    // Apply agent channel filter if specified
+    if (agentChannel) {
+      orders = this.filterByAgentChannel(orders, agentChannel);
+      console.log(`[IQRClient] After channel filter ("${agentChannel}"): ${orders.length} orders`);
+    }
+
+    return orders;
   }
 
   /**
    * Update Sales Order User Defined Fields with tracking information
-   * Endpoint verified from Postman collection
+   * TODO: Confirm endpoint and field mapping with IQR team
    */
   async updateOrderTracking(update: IQRTrackingUpdate): Promise<void> {
     console.log(`[IQRClient] Updating tracking for SO ID ${update.orderId}...`);
+    // TODO: Confirm this endpoint works for updating tracking
     await this.request('/webapi.svc/SO/UDFS/JSON', {
       method: 'POST',
       body: {

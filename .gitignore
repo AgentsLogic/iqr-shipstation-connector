@@ -31,3 +31,14 @@ coverage/
 *.tmp
 *.temp
 
+# Test files
+test-*.js
+response.txt
+*.exe
+*.zip
+installer-output/
+build/
+
+# Images
+*.png
+

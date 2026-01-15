@@ -3,7 +3,7 @@
  * Tests the IQR API authentication with detailed logging
  */
 
-const API_KEY = '9ccQ4jB4d24KhWhOtcpeR/y3FmFBp/Asq1664VjnKUV/jp/Nvyj+6rf21xysTjoeXDB9aSuxlpZ5L5OxXAUkPw==';
+const API_KEY = '/wGc/xzjFcwOy8yaDCu388wbbAgkzs7sQqYqqLtb2+uDgnPhKd';
 const AUTH_URL = 'https://signin.iqreseller.com/api/IntegrationAPI/Session';
 
 console.log('='.repeat(60));

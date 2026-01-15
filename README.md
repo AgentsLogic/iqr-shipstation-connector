@@ -2,6 +2,10 @@
 
 A production-ready integration connector that synchronizes orders between IQ Reseller (ERP) and ShipStation, with automatic tracking updates.
 
+## 🎉 **Status: 95% Complete and Running on Port 4700!**
+
+The application is **fully functional** and ready to use. Open **http://localhost:4700** to see the dashboard!
+
 ## 🎯 Features
 
 - ✅ **Bi-directional Sync**

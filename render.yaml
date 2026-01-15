@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: iqr-shipstation-connector
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: IQR_API_KEY
+        sync: false
+      - key: IQR_AUTH_URL
+        value: https://signin.iqreseller.com
+      - key: IQR_API_BASE_URL
+        value: https://api.iqreseller.com
+      - key: SHIPSTATION_API_KEY
+        sync: false
+      - key: SHIPSTATION_API_SECRET
+        sync: false
+      - key: SHIPSTATION_API_BASE_URL
+        value: https://ssapi.shipstation.com
+      - key: SHIPSTATION_WEBHOOK_SECRET
+        sync: false
+      - key: SYNC_INTERVAL_MINUTES
+        value: 15
+      - key: SYNC_BATCH_SIZE
+        value: 50
+      - key: SYNC_MAX_RETRIES
+        value: 3
+      - key: IQR_SYNC_STATUSES
+        value: Open,Partial
+      - key: IQR_AGENT_CHANNEL
+        value: DPC - QUIC
+      - key: IQR_SYNC_DAYS_BACK
+        value: 30
+    healthCheckPath: /health
+
