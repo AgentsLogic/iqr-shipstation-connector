@@ -32,6 +32,7 @@
 
 ### ShipStation API Integration
 - ✅ Creating orders
+- ✅ Routing orders to specific store/channel ("DPC - Agent Quickbooks")
 - ✅ Batch processing
 - ✅ Idempotency (no duplicates)
 - ✅ Receiving tracking webhooks
@@ -63,6 +64,7 @@ SYNC_INTERVAL_MINUTES=15
 IQR_SYNC_STATUSES=Open,Partial
 IQR_SYNC_DAYS_BACK=30
 IQR_AGENT_CHANNEL=DPC - QUIC
+SHIPSTATION_STORE_NAME=DPC - Agent Quickbooks
 PORT=4700
 ```
 

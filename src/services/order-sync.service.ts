@@ -22,7 +22,7 @@ export interface SyncResult {
 /**
  * Transform an IQR order to ShipStation format
  */
-function transformOrder(iqrOrder: IQROrder): ShipStationOrder {
+function transformOrder(iqrOrder: IQROrder, storeId?: number): ShipStationOrder {
   return {
     orderNumber: iqrOrder.orderNumber,
     orderKey: `IQR-${iqrOrder.orderId}`, // Unique key for idempotency
@@ -46,6 +46,7 @@ function transformOrder(iqrOrder: IQROrder): ShipStationOrder {
       weight: item.weight ? { value: item.weight, units: 'pounds' as const } : undefined,
     })),
     advancedOptions: {
+      storeId: storeId,
       customField1: `IQR Order ID: ${iqrOrder.orderId}`,
     },
   };
@@ -70,6 +71,21 @@ export async function syncOrders(options?: {
   performanceMonitor.start('order-sync-full');
 
   try {
+    // Get the ShipStation store ID for the configured store
+    let storeId: number | undefined;
+    try {
+      const store = await shipStationClient.getStoreByName(config.shipStation.storeName);
+      if (store) {
+        storeId = store.storeId;
+        logger.info(`Using ShipStation store: ${store.storeName} (ID: ${storeId})`);
+      } else {
+        logger.warn(`Store "${config.shipStation.storeName}" not found in ShipStation. Orders will be created without a specific store.`);
+      }
+    } catch (error) {
+      logger.error('Failed to fetch ShipStation store', error as Error);
+      logger.warn('Continuing without store ID - orders may not appear in the correct store');
+    }
+
     // Fetch orders from IQ Reseller
     performanceMonitor.start('fetch-orders');
     const orders = await iqrClient.getOrders({
@@ -93,12 +109,13 @@ export async function syncOrders(options?: {
       orders,
       async (iqrOrder) => {
         try {
-          const shipStationOrder = transformOrder(iqrOrder);
+          const shipStationOrder = transformOrder(iqrOrder, storeId);
           await shipStationClient.createOrder(shipStationOrder);
           result.ordersProcessed++;
           logger.debug('Order synced to ShipStation', {
             orderNumber: iqrOrder.orderNumber,
             orderId: iqrOrder.orderId,
+            storeId: storeId,
           });
         } catch (error) {
           result.ordersFailed++;

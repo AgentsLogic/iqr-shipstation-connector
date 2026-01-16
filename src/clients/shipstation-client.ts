@@ -23,6 +23,7 @@ export interface ShipStationOrder {
   tagIds?: number[];
   advancedOptions?: {
     warehouseId?: number;
+    storeId?: number;
     customField1?: string;
     customField2?: string;
     customField3?: string;
@@ -65,6 +66,26 @@ export interface ShipStationShipment {
   carrierCode: string;
   serviceCode: string;
   shipmentCost: number;
+}
+
+export interface ShipStationStore {
+  storeId: number;
+  storeName: string;
+  marketplaceId: number;
+  marketplaceName: string;
+  accountName: string | null;
+  email: string | null;
+  integrationUrl: string | null;
+  active: boolean;
+  companyName: string;
+  phone: string;
+  publicEmail: string;
+  website: string;
+  refreshDate: string;
+  lastRefreshAttempt: string;
+  createDate: string;
+  modifyDate: string;
+  autoRefresh: boolean;
 }
 
 export interface ShipStationWebhook {
@@ -168,6 +189,33 @@ export class ShipStationClient {
   async getShipmentByOrderNumber(orderNumber: string): Promise<ShipStationShipment | null> {
     const result = await this.listShipments({ orderNumber });
     return result.shipments?.[0] || null;
+  }
+
+  /**
+   * List all stores
+   */
+  async listStores(params?: {
+    showInactive?: boolean;
+    marketplaceId?: number;
+  }): Promise<ShipStationStore[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.showInactive !== undefined) {
+      queryParams.append('showInactive', String(params.showInactive));
+    }
+    if (params?.marketplaceId !== undefined) {
+      queryParams.append('marketplaceId', String(params.marketplaceId));
+    }
+
+    const query = queryParams.toString();
+    return this.request(`/stores${query ? `?${query}` : ''}`);
+  }
+
+  /**
+   * Get store by name
+   */
+  async getStoreByName(storeName: string): Promise<ShipStationStore | null> {
+    const stores = await this.listStores({ showInactive: false });
+    return stores.find(store => store.storeName === storeName) || null;
   }
 }
 

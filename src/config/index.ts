@@ -21,6 +21,7 @@ export interface Config {
     apiSecret: string;
     apiBaseUrl: string;
     webhookSecret: string;
+    storeName: string;
   };
 
   // Sync Configuration
@@ -61,6 +62,7 @@ export const config: Config = {
     apiSecret: getEnvOrThrow('SHIPSTATION_API_SECRET'),
     apiBaseUrl: getEnvOrDefault('SHIPSTATION_API_BASE_URL', 'https://ssapi.shipstation.com'),
     webhookSecret: getEnvOrDefault('SHIPSTATION_WEBHOOK_SECRET', ''),
+    storeName: getEnvOrDefault('SHIPSTATION_STORE_NAME', 'DPC - Agent Quickbooks'),
   },
 
   sync: {
