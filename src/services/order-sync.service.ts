@@ -195,16 +195,23 @@ export function startScheduledSync(): void {
     intervalMinutes: config.sync.intervalMinutes,
   });
 
-  // Run immediately on start
-  syncOrders().catch((error) => {
-    logger.error('Scheduled sync failed', error);
-  });
-
-  // Then run on schedule
-  setInterval(() => {
+  // Run immediately on start (only if enabled)
+  if (config.sync.enabled) {
     syncOrders().catch((error) => {
       logger.error('Scheduled sync failed', error);
     });
+  }
+
+  // Then run on schedule
+  setInterval(() => {
+    // Check if sync is enabled before running
+    if (config.sync.enabled) {
+      syncOrders().catch((error) => {
+        logger.error('Scheduled sync failed', error);
+      });
+    } else {
+      logger.debug('Scheduled sync skipped - sync is paused');
+    }
   }, intervalMs);
 }
 

@@ -261,6 +261,37 @@ app.get('/', async (_req: Request, res: Response) => {
     }
     .success-text { color: #10b981; }
     .error-text { color: #ef4444; }
+    .toggle-btn {
+      margin-top: 12px;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+    .toggle-btn.active {
+      background: #fef3c7;
+      color: #92400e;
+      border: 2px solid #f59e0b;
+    }
+    .toggle-btn.active:hover {
+      background: #fde68a;
+    }
+    .toggle-btn.paused {
+      background: #d1fae5;
+      color: #065f46;
+      border: 2px solid #10b981;
+    }
+    .toggle-btn.paused:hover {
+      background: #a7f3d0;
+    }
+    .toggle-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -313,6 +344,9 @@ app.get('/', async (_req: Request, res: Response) => {
               ${config.sync.enabled ? '▶️ Active' : '⏸️ Paused'}
             </div>
             <div class="stat-label">Auto-Sync Status</div>
+            <button id="toggleSyncBtn" class="toggle-btn ${config.sync.enabled ? 'active' : 'paused'}">
+              ${config.sync.enabled ? '⏸️ Pause Sync' : '▶️ Enable Sync'}
+            </button>
           </div>
           <div class="stat">
             <div class="stat-value">${config.sync.intervalMinutes}m</div>
@@ -341,6 +375,33 @@ app.get('/', async (_req: Request, res: Response) => {
       </p>
     </div>
   </div>
+  <script>
+    // Toggle sync button handler
+    document.getElementById('toggleSyncBtn').addEventListener('click', async function() {
+      const btn = this;
+      btn.disabled = true;
+      btn.textContent = '⏳ Updating...';
+
+      try {
+        const response = await fetch('/api/sync/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          // Reload page to show updated status
+          window.location.reload();
+        } else {
+          alert('Failed to toggle sync. Please try again.');
+          btn.disabled = false;
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+        btn.disabled = false;
+      }
+    });
+  </script>
 </body>
 </html>
   `;
@@ -379,6 +440,30 @@ app.post('/api/sync/orders', async (req: Request, res: Response, next: NextFunct
     const { fromDate, toDate, orderStatus } = req.body;
     const result = await syncOrders({ fromDate, toDate, orderStatus });
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Toggle sync enabled/disabled endpoint
+app.post('/api/sync/toggle', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const newState = !config.sync.enabled;
+    config.sync.enabled = newState;
+
+    // Update environment variable for persistence (requires restart to take effect)
+    process.env.SYNC_ENABLED = newState ? 'true' : 'false';
+
+    logger.info(`Auto-sync ${newState ? 'ENABLED' : 'PAUSED'}`, {
+      previousState: !newState,
+      newState: newState
+    });
+
+    res.json({
+      success: true,
+      enabled: newState,
+      message: `Auto-sync ${newState ? 'enabled' : 'paused'}. ${newState ? 'Automatic syncing will start on next interval.' : 'Manual sync still available via /api/sync/orders'}`
+    });
   } catch (error) {
     next(error);
   }

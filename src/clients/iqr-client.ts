@@ -268,11 +268,17 @@ export class IQRClient {
   }): Promise<IQROrder[]> {
     console.log('[IQRClient] Fetching sales orders...');
 
-    // Use GET method - confirmed working in Postman
+    // Use GET method with required query parameters
+    // Page=0, PageSize=0, SortBy=0 returns all results
     const rawOrders = await this.request<IQRRawOrder[]>(
       '/webapi.svc/SO/JSON/GetSOs',
       {
         method: 'GET',
+        queryParams: {
+          Page: 0,
+          PageSize: 0,
+          SortBy: 0,
+        },
       }
     );
 
