@@ -26,6 +26,7 @@ export interface Config {
 
   // Sync Configuration
   sync: {
+    enabled: boolean;
     intervalMinutes: number;
     batchSize: number;
     maxRetries: number;
@@ -66,6 +67,7 @@ export const config: Config = {
   },
 
   sync: {
+    enabled: getEnvOrDefault('SYNC_ENABLED', 'false').toLowerCase() === 'true',
     intervalMinutes: parseInt(getEnvOrDefault('SYNC_INTERVAL_MINUTES', '15'), 10),
     batchSize: parseInt(getEnvOrDefault('SYNC_BATCH_SIZE', '50'), 10),
     maxRetries: parseInt(getEnvOrDefault('SYNC_MAX_RETRIES', '3'), 10),

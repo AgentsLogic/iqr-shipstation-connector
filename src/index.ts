@@ -309,6 +309,12 @@ app.get('/', async (_req: Request, res: Response) => {
         <div class="card-title">📊 System Info</div>
         <div class="stat-grid">
           <div class="stat">
+            <div class="stat-value" style="color: ${config.sync.enabled ? '#10b981' : '#f59e0b'};">
+              ${config.sync.enabled ? '▶️ Active' : '⏸️ Paused'}
+            </div>
+            <div class="stat-label">Auto-Sync Status</div>
+          </div>
+          <div class="stat">
             <div class="stat-value">${config.sync.intervalMinutes}m</div>
             <div class="stat-label">Sync Interval</div>
           </div>
@@ -327,7 +333,12 @@ app.get('/', async (_req: Request, res: Response) => {
 
     <div class="footer">
       <p>v1.0.0 • IQR ↔ ShipStation Integration</p>
-      <p style="margin-top: 8px;">Auto-syncing orders every ${config.sync.intervalMinutes} minutes • Last updated: ${new Date().toLocaleTimeString()}</p>
+      <p style="margin-top: 8px;">
+        ${config.sync.enabled
+          ? `Auto-syncing orders every ${config.sync.intervalMinutes} minutes`
+          : '⏸️ Auto-sync PAUSED - Manual sync only'}
+        • Last updated: ${new Date().toLocaleTimeString()}
+      </p>
     </div>
   </div>
 </body>
@@ -449,10 +460,12 @@ const server = app.listen(PORT, () => {
     environment: config.server.environment,
   });
 
-  // Start scheduled sync if configured
-  if (config.sync.intervalMinutes > 0) {
+  // Start scheduled sync if enabled
+  if (config.sync.enabled && config.sync.intervalMinutes > 0) {
     logger.info(`Scheduled sync enabled: every ${config.sync.intervalMinutes} minutes`);
     startScheduledSync();
+  } else if (!config.sync.enabled) {
+    logger.warn('⏸️  AUTOMATIC SYNC PAUSED - Manual sync only via /api/sync/orders');
   } else {
     logger.info('Scheduled sync disabled (interval set to 0)');
   }
