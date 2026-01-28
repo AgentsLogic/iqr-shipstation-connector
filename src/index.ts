@@ -7,7 +7,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import compression from 'compression';
 import { config } from './config';
-import { syncOrders, startScheduledSync } from './services/order-sync.service';
+import { syncOrders, startScheduledSync, stopScheduledSync, isScheduledSyncRunning } from './services/order-sync.service';
 import {
   processShipmentWebhook,
   validateWebhookSignature,
@@ -454,15 +454,35 @@ app.post('/api/sync/toggle', async (req: Request, res: Response, next: NextFunct
     // Update environment variable for persistence (requires restart to take effect)
     process.env.SYNC_ENABLED = newState ? 'true' : 'false';
 
-    logger.info(`Auto-sync ${newState ? 'ENABLED' : 'PAUSED'}`, {
-      previousState: !newState,
-      newState: newState
-    });
+    // Actually start or stop the scheduled sync
+    if (newState) {
+      // Enabling sync - start the scheduled interval
+      if (!isScheduledSyncRunning()) {
+        startScheduledSync();
+        logger.info('Auto-sync ENABLED - Started scheduled sync', {
+          previousState: !newState,
+          newState: newState,
+          intervalMinutes: config.sync.intervalMinutes
+        });
+      } else {
+        logger.info('Auto-sync ENABLED - Scheduled sync already running', {
+          previousState: !newState,
+          newState: newState
+        });
+      }
+    } else {
+      // Disabling sync - stop the scheduled interval
+      stopScheduledSync();
+      logger.info('Auto-sync PAUSED - Stopped scheduled sync', {
+        previousState: !newState,
+        newState: newState
+      });
+    }
 
     res.json({
       success: true,
       enabled: newState,
-      message: `Auto-sync ${newState ? 'enabled' : 'paused'}. ${newState ? 'Automatic syncing will start on next interval.' : 'Manual sync still available via /api/sync/orders'}`
+      message: `Auto-sync ${newState ? 'enabled' : 'paused'}. ${newState ? 'Automatic syncing will run every ' + config.sync.intervalMinutes + ' minutes.' : 'Manual sync still available via /api/sync/orders'}`
     });
   } catch (error) {
     next(error);

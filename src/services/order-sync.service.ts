@@ -185,10 +185,19 @@ export async function syncOrders(options?: {
   return result;
 }
 
+// Store the interval ID so we can stop/start it
+let syncIntervalId: NodeJS.Timeout | null = null;
+
 /**
  * Run the sync on a schedule
  */
 export function startScheduledSync(): void {
+  // Don't start if already running
+  if (syncIntervalId) {
+    logger.warn('Scheduled sync already running');
+    return;
+  }
+
   const intervalMs = config.sync.intervalMinutes * 60 * 1000;
 
   logger.info('Scheduled sync initialized', {
@@ -203,7 +212,7 @@ export function startScheduledSync(): void {
   }
 
   // Then run on schedule
-  setInterval(() => {
+  syncIntervalId = setInterval(() => {
     // Check if sync is enabled before running
     if (config.sync.enabled) {
       syncOrders().catch((error) => {
@@ -213,5 +222,23 @@ export function startScheduledSync(): void {
       logger.debug('Scheduled sync skipped - sync is paused');
     }
   }, intervalMs);
+}
+
+/**
+ * Stop the scheduled sync
+ */
+export function stopScheduledSync(): void {
+  if (syncIntervalId) {
+    clearInterval(syncIntervalId);
+    syncIntervalId = null;
+    logger.info('Scheduled sync stopped');
+  }
+}
+
+/**
+ * Check if scheduled sync is running
+ */
+export function isScheduledSyncRunning(): boolean {
+  return syncIntervalId !== null;
 }
 
