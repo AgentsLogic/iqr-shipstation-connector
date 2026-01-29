@@ -20,15 +20,51 @@ export interface SyncResult {
 }
 
 /**
+ * Normalize country code to 2-character ISO format
+ */
+function normalizeCountryCode(country: string): string {
+  if (!country) return 'US';
+
+  const normalized = country.trim().toUpperCase();
+
+  // If already 2 characters, return as-is
+  if (normalized.length === 2) return normalized;
+
+  // Common country name mappings
+  const countryMap: Record<string, string> = {
+    'UNITED STATES': 'US',
+    'USA': 'US',
+    'CANADA': 'CA',
+    'MEXICO': 'MX',
+    'UNITED KINGDOM': 'GB',
+    'UK': 'GB',
+  };
+
+  return countryMap[normalized] || 'US';
+}
+
+/**
  * Transform an IQR order to ShipStation format
  */
 function transformOrder(iqrOrder: IQROrder, storeId?: number): ShipStationOrder {
+  const countryCode = normalizeCountryCode(iqrOrder.shippingAddress.country);
+
   return {
     orderNumber: iqrOrder.orderNumber,
     orderKey: `IQR-${iqrOrder.orderId}`, // Unique key for idempotency
     orderDate: iqrOrder.orderDate,
     orderStatus: 'awaiting_shipment',
     customerEmail: iqrOrder.customerEmail,
+    // ShipStation requires billTo - use same as shipTo if not provided
+    billTo: {
+      name: iqrOrder.customerName,
+      street1: iqrOrder.shippingAddress.street1,
+      street2: iqrOrder.shippingAddress.street2,
+      city: iqrOrder.shippingAddress.city,
+      state: iqrOrder.shippingAddress.state,
+      postalCode: iqrOrder.shippingAddress.postalCode,
+      country: countryCode,
+    },
     shipTo: {
       name: iqrOrder.customerName,
       street1: iqrOrder.shippingAddress.street1,
@@ -36,7 +72,7 @@ function transformOrder(iqrOrder: IQROrder, storeId?: number): ShipStationOrder 
       city: iqrOrder.shippingAddress.city,
       state: iqrOrder.shippingAddress.state,
       postalCode: iqrOrder.shippingAddress.postalCode,
-      country: iqrOrder.shippingAddress.country,
+      country: countryCode,
     },
     items: iqrOrder.lineItems.map(item => ({
       sku: item.sku,
