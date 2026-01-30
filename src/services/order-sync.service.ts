@@ -125,8 +125,8 @@ export async function syncOrders(options?: {
     // Fetch orders from IQ Reseller with filters
     performanceMonitor.start('fetch-orders');
     const orders = await iqrClient.getOrdersToSync({
-      statuses: options?.orderStatus ? [options.orderStatus] : ['Open', 'Partial'],
-      daysBack: 30,
+      statuses: options?.orderStatus ? [options.orderStatus] : ['Open'],
+      daysBack: 1,
       agentChannel: 'Agent',
     });
     performanceMonitor.end('fetch-orders', { count: orders.length });
