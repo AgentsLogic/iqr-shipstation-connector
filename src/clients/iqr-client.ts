@@ -344,29 +344,23 @@ export class IQRClient {
 
   /**
    * Filter orders by agent channel
-   * TODO: Need to confirm which field contains "DPC - QUIC"
-   * Possible fields: userdefined1-5, clientid, shipfromclientid, rep
+   * Agent orders are identified by userdefined1 = "AGENT"
    */
   filterByAgentChannel(orders: IQROrder[], channelName: string): IQROrder[] {
-    console.warn('[IQRClient] Agent channel filtering not yet implemented - need field mapping from IQR team');
-    // TODO: Implement once we know which field contains the agent channel
-    // Check all possible fields in the raw order
+    console.log(`[IQRClient] Filtering by agent channel: "${channelName}" in userdefined1 field`);
+
     return orders.filter(order => {
       const raw = order.raw;
-      const searchValue = channelName.toLowerCase();
+      const userdefined1Value = raw.userdefined1?.toUpperCase() || '';
+      const searchValue = channelName.toUpperCase();
 
-      // Check all user-defined fields
-      const fields = [
-        raw.userdefined1,
-        raw.userdefined2,
-        raw.userdefined3,
-        raw.userdefined4,
-        raw.userdefined5,
-      ];
+      const isMatch = userdefined1Value === searchValue;
 
-      return fields.some(field =>
-        field && field.toLowerCase().includes(searchValue)
-      );
+      if (isMatch) {
+        console.log(`[IQRClient] ✓ Order ${order.orderNumber} matches: userdefined1="${raw.userdefined1}"`);
+      }
+
+      return isMatch;
     });
   }
 
