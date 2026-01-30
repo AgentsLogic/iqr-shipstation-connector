@@ -266,26 +266,49 @@ export class IQRClient {
     fromDate?: string;
     toDate?: string;
   }): Promise<IQROrder[]> {
-    console.log('[IQRClient] Fetching sales orders...');
+    console.log('[IQRClient] Fetching sales orders with pagination...');
 
-    // Use GET method with required query parameters
-    // Page=0, PageSize=0, SortBy=0 returns all results
-    const rawOrders = await this.request<IQRRawOrder[]>(
-      '/webapi.svc/SO/JSON/GetSOs',
-      {
-        method: 'GET',
-        queryParams: {
-          Page: 0,
-          PageSize: 0,
-          SortBy: 0,
-        },
+    let allOrders: IQRRawOrder[] = [];
+    let page = 1;
+    let hasMore = true;
+    const pageSize = 100; // Fetch 100 orders per page
+
+    while (hasMore) {
+      console.log(`[IQRClient] Fetching page ${page}...`);
+
+      const rawOrders = await this.request<IQRRawOrder[]>(
+        '/webapi.svc/SO/JSON/GetSOs',
+        {
+          method: 'GET',
+          queryParams: {
+            Page: page,
+            PageSize: pageSize,
+            SortBy: 0,
+          },
+        }
+      );
+
+      const ordersReceived = rawOrders?.length || 0;
+      console.log(`[IQRClient] Page ${page}: Received ${ordersReceived} orders`);
+
+      if (ordersReceived === 0) {
+        hasMore = false;
+      } else {
+        allOrders = allOrders.concat(rawOrders);
+
+        // If we got fewer orders than the page size, we've reached the end
+        if (ordersReceived < pageSize) {
+          hasMore = false;
+        } else {
+          page++;
+        }
       }
-    );
+    }
 
-    console.log('[IQRClient] Received', rawOrders?.length || 0, 'raw orders');
+    console.log('[IQRClient] Total orders received:', allOrders.length);
 
     // Transform to our format
-    const orders = (rawOrders || []).map(raw => this.transformOrder(raw));
+    const orders = allOrders.map(raw => this.transformOrder(raw));
     console.log('[IQRClient] Transformed', orders.length, 'orders');
 
     return orders;
