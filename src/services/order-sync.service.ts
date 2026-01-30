@@ -122,12 +122,12 @@ export async function syncOrders(options?: {
       logger.warn('Continuing without store ID - orders may not appear in the correct store');
     }
 
-    // Fetch orders from IQ Reseller
+    // Fetch orders from IQ Reseller with filters
     performanceMonitor.start('fetch-orders');
-    const orders = await iqrClient.getOrders({
-      status: options?.orderStatus,
-      fromDate: options?.fromDate,
-      toDate: options?.toDate,
+    const orders = await iqrClient.getOrdersToSync({
+      statuses: options?.orderStatus ? [options.orderStatus] : ['Open', 'Partial'],
+      daysBack: 30,
+      agentChannel: 'Agent',
     });
     performanceMonitor.end('fetch-orders', { count: orders.length });
 
