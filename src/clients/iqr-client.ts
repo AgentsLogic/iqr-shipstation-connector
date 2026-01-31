@@ -272,29 +272,30 @@ export class IQRClient {
     console.log('[IQRClient] Fetching sales orders with pagination...');
 
     let allOrders: IQRRawOrder[] = [];
-    // Try to filter by Status=Open in the API call to reduce data volume
-    // This might allow us to get only open orders without fetching all historical data
+    // Try using POST with a filter body instead of GET
+    // The IQR API might support filtering via POST request body
     let page = 0;
     let hasMore = true;
     const pageSize = 100;
     let pagesProcessed = 0;
-    const maxPages = 20; // Reduced - if filtering works, we should need fewer pages
+    const maxPages = 10; // Keep low for testing
 
-    console.log('[IQRClient] Attempting to fetch OPEN orders only from API...');
+    console.log('[IQRClient] Attempting to fetch orders using POST with filter...');
 
     while (hasMore && pagesProcessed < maxPages) {
       console.log(`[IQRClient] Fetching page ${page}...`);
 
       try {
+        // Try POST method with filter in body
         const rawOrders = await this.request<IQRRawOrder[]>(
           '/webapi.svc/SO/JSON/GetSOs',
           {
-            method: 'GET',
-            queryParams: {
+            method: 'POST',
+            body: {
               Page: page,
               PageSize: pageSize,
               SortBy: 0,
-              Status: 'Open', // TRY adding Status filter to API call
+              Status: 'Open',
             },
           }
         );
