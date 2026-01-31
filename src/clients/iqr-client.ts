@@ -272,8 +272,9 @@ export class IQRClient {
     let page = 1;
     let hasMore = true;
     const pageSize = 100; // Fetch 100 orders per page
+    const maxPages = 50; // Safety limit: max 5000 orders (50 pages * 100 per page)
 
-    while (hasMore) {
+    while (hasMore && page <= maxPages) {
       console.log(`[IQRClient] Fetching page ${page}...`);
 
       const rawOrders = await this.request<IQRRawOrder[]>(
@@ -303,6 +304,10 @@ export class IQRClient {
           page++;
         }
       }
+    }
+
+    if (page > maxPages) {
+      console.warn(`[IQRClient] ⚠️  Reached maximum page limit (${maxPages} pages, ${allOrders.length} orders). Some orders may not be included.`);
     }
 
     console.log('[IQRClient] Total orders received:', allOrders.length);
