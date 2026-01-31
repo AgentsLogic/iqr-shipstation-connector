@@ -126,8 +126,8 @@ export async function syncOrders(options?: {
     performanceMonitor.start('fetch-orders');
     const orders = await iqrClient.getOrdersToSync({
       statuses: options?.orderStatus ? [options.orderStatus] : ['Open'],
-      daysBack: 2, // Expanded to 2 days to catch recent test orders
-      agentChannel: 'Agent',
+      daysBack: 2, // Last 2 days
+      // NO agent channel filter - get ALL open orders
     });
     performanceMonitor.end('fetch-orders', { count: orders.length });
 
