@@ -272,28 +272,29 @@ export class IQRClient {
     console.log('[IQRClient] Fetching sales orders with pagination...');
 
     let allOrders: IQRRawOrder[] = [];
-    // Try the GetOpenSOs endpoint - maybe there's a dedicated endpoint for open orders
+    // Try SortBy=1 (descending) to get newest orders first
+    // This way we can get Luis's 2026 orders on page 0 instead of page 41+
     let page = 0;
     let hasMore = true;
     const pageSize = 100;
     let pagesProcessed = 0;
-    const maxPages = 10;
+    const maxPages = 5; // Only need a few pages if sorted descending
 
-    console.log('[IQRClient] Trying GetOpenSOs endpoint...');
+    console.log('[IQRClient] Trying SortBy=1 (descending) to get newest orders first...');
 
     while (hasMore && pagesProcessed < maxPages) {
       console.log(`[IQRClient] Fetching page ${page}...`);
 
       try {
-        // Try GetOpenSOs endpoint first
+        // Try SortBy=1 for descending order (newest first)
         const rawOrders = await this.request<IQRRawOrder[]>(
-          '/webapi.svc/SO/JSON/GetOpenSOs',
+          '/webapi.svc/SO/JSON/GetSOs',
           {
             method: 'GET',
             queryParams: {
               Page: page,
               PageSize: pageSize,
-              SortBy: 0,
+              SortBy: 1, // TRY: 1 = descending (newest first)?
             },
           }
         );
