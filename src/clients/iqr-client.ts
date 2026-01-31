@@ -287,7 +287,7 @@ export class IQRClient {
           queryParams: {
             Page: page,
             PageSize: pageSize,
-            SortBy: 0,
+            SortBy: 1, // 1 = descending (newest first), 0 = ascending (oldest first)
           },
         }
       );

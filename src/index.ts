@@ -376,6 +376,11 @@ app.get('/', async (_req: Request, res: Response) => {
     </div>
   </div>
   <script>
+    // Auto-refresh the page every 30 seconds to show updated activity
+    setInterval(function() {
+      window.location.reload();
+    }, 30000); // 30 seconds
+
     // Toggle sync button handler
     document.getElementById('toggleSyncBtn').addEventListener('click', async function() {
       const btn = this;
