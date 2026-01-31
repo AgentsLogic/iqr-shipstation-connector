@@ -349,7 +349,7 @@ export class IQRClient {
     if (orders.length > 0) {
       console.log('[IQRClient] Sample order dates (first 3):');
       orders.slice(0, 3).forEach((order, idx) => {
-        console.log(`  Order ${idx + 1} (${order.orderNumber}): orderDate="${order.orderDate}", saleDate="${order.saleDate}"`);
+        console.log(`  Order ${idx + 1} (${order.orderNumber}): orderDate="${order.orderDate}"`);
       });
     }
 
