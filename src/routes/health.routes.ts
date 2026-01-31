@@ -52,7 +52,7 @@ router.get('/health/detailed', async (req: Request, res: Response) => {
   try {
     await iqrClient.authenticate();
     health.services.iqr = 'up';
-    await iqrClient.endSession();
+    // Keep session alive for subsequent requests
   } catch (error) {
     logger.error('IQR health check failed', error as Error);
     health.services.iqr = 'down';

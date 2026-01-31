@@ -186,9 +186,6 @@ export async function syncOrders(options?: {
     );
 
     throw error;
-  } finally {
-    // End the IQR session
-    await iqrClient.endSession();
   }
 
   const duration = performanceMonitor.end('order-sync-full', {
