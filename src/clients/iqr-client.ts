@@ -275,7 +275,7 @@ export class IQRClient {
     let page = 0; // IQR API pages start at 0
     let hasMore = true;
     const pageSize = 100; // Fetch 100 orders per page
-    const maxPages = 10; // Reduced limit to prevent API timeouts (1000 orders max)
+    const maxPages = 400; // Fetch up to 40,000 orders to get recent ones (orders are sorted oldest-first)
 
     while (hasMore && page < maxPages) {
       console.log(`[IQRClient] Fetching page ${page}...`);
@@ -287,7 +287,7 @@ export class IQRClient {
           queryParams: {
             Page: page,
             PageSize: pageSize,
-            SortBy: 1, // 1 = descending (newest first), 0 = ascending (oldest first)
+            SortBy: 0, // API only supports 0 (ascending/oldest first)
           },
         }
       );
