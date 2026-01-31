@@ -318,8 +318,8 @@ export class IQRClient {
       }
     }
 
-    if (page >= maxPages) {
-      console.warn(`[IQRClient] ⚠️  Reached maximum page limit (${maxPages} pages, ${allOrders.length} orders). Some orders may not be included.`);
+    if (page > maxPage) {
+      console.warn(`[IQRClient] ⚠️  Reached maximum page limit (page ${maxPage}, ${allOrders.length} orders). Some orders may not be included.`);
     }
 
     console.log('[IQRClient] Total orders received:', allOrders.length);
