@@ -272,14 +272,15 @@ export class IQRClient {
     console.log('[IQRClient] Fetching sales orders with pagination...');
 
     let allOrders: IQRRawOrder[] = [];
-    // Start from page 0 and fetch ALL pages up to page 40 (we know page 41+ crashes)
-    // Then filter by date on the client side to get only last 2 days
+    // Fetch ALL pages until we reach the end (API returns < 100 orders)
+    // We'll filter by date on the client side after fetching
     let page = 0; // Start from page 0
     let hasMore = true;
     const pageSize = 100; // Fetch 100 orders per page
-    const maxPages = 40; // Fetch up to 40 pages (4000 orders) - we know page 40 works, page 41+ crashes
+    let pagesProcessed = 0;
+    const maxPages = 100; // Safety limit - stop after 100 pages (10,000 orders) to prevent infinite loops
 
-    while (hasMore && page < maxPages) {
+    while (hasMore && pagesProcessed < maxPages) {
       console.log(`[IQRClient] Fetching page ${page}...`);
 
       try {
@@ -316,6 +317,7 @@ export class IQRClient {
             hasMore = false;
           } else {
             page++;
+            pagesProcessed++;
           }
         }
       } catch (error: any) {
@@ -326,7 +328,7 @@ export class IQRClient {
       }
     }
 
-    if (page >= maxPages) {
+    if (pagesProcessed >= maxPages) {
       console.warn(`[IQRClient] ⚠️  Reached maximum page limit (${maxPages} pages, ${allOrders.length} orders fetched)`);
     }
 
