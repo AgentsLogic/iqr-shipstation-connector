@@ -272,54 +272,62 @@ export class IQRClient {
     console.log('[IQRClient] Fetching sales orders with pagination...');
 
     let allOrders: IQRRawOrder[] = [];
-    // Orders from yesterday should be at the END. Start from page 41 (last known working page)
-    // and fetch forward until we hit the end (API returns < 100 orders or 404)
-    let page = 41; // Start from page 41 (page 40 worked, page 50 failed)
+    // Start from page 0 and fetch ALL pages up to page 40 (we know page 41+ crashes)
+    // Then filter by date on the client side to get only last 2 days
+    let page = 0; // Start from page 0
     let hasMore = true;
     const pageSize = 100; // Fetch 100 orders per page
-    const maxPage = 50; // Stop at page 50 (we know page 50+ returns 404)
+    const maxPages = 40; // Fetch up to 40 pages (4000 orders) - we know page 40 works, page 41+ crashes
 
-    while (hasMore && page <= maxPage) {
+    while (hasMore && page < maxPages) {
       console.log(`[IQRClient] Fetching page ${page}...`);
 
-      const rawOrders = await this.request<IQRRawOrder[]>(
-        '/webapi.svc/SO/JSON/GetSOs',
-        {
-          method: 'GET',
-          queryParams: {
-            Page: page,
-            PageSize: pageSize,
-            SortBy: 0, // API only supports 0 (ascending/oldest first)
-          },
-        }
-      );
+      try {
+        const rawOrders = await this.request<IQRRawOrder[]>(
+          '/webapi.svc/SO/JSON/GetSOs',
+          {
+            method: 'GET',
+            queryParams: {
+              Page: page,
+              PageSize: pageSize,
+              SortBy: 0, // API only supports 0 (ascending/oldest first)
+            },
+          }
+        );
 
-      const ordersReceived = rawOrders?.length || 0;
-      console.log(`[IQRClient] Page ${page}: Received ${ordersReceived} orders`);
+        const ordersReceived = rawOrders?.length || 0;
+        console.log(`[IQRClient] Page ${page}: Received ${ordersReceived} orders`);
 
-      if (ordersReceived === 0) {
-        hasMore = false;
-      } else {
-        allOrders = allOrders.concat(rawOrders);
-
-        // Log the last order on this page to track progress
-        if (rawOrders.length > 0) {
-          const lastOrder = rawOrders[rawOrders.length - 1];
-          console.log(`[IQRClient] Page ${page} last order: #${lastOrder.so} (${lastOrder.saledate || 'no date'})`);
-        }
-
-        // If we got fewer orders than the page size, we've reached the end
-        if (ordersReceived < pageSize) {
-          console.log(`[IQRClient] Reached end of orders at page ${page}`);
+        if (ordersReceived === 0) {
+          console.log(`[IQRClient] No more orders at page ${page}`);
           hasMore = false;
         } else {
-          page++;
+          allOrders = allOrders.concat(rawOrders);
+
+          // Log the last order on this page to track progress
+          if (rawOrders.length > 0) {
+            const lastOrder = rawOrders[rawOrders.length - 1];
+            console.log(`[IQRClient] Page ${page} last order: #${lastOrder.so} (${lastOrder.saledate || 'no date'})`);
+          }
+
+          // If we got fewer orders than the page size, we've reached the end
+          if (ordersReceived < pageSize) {
+            console.log(`[IQRClient] Reached end of orders at page ${page} (received ${ordersReceived} < ${pageSize})`);
+            hasMore = false;
+          } else {
+            page++;
+          }
         }
+      } catch (error: any) {
+        // If we hit a 404 or any error, we've reached the end
+        console.log(`[IQRClient] Error fetching page ${page}: ${error.message}`);
+        console.log(`[IQRClient] Stopping pagination at page ${page}`);
+        hasMore = false;
       }
     }
 
-    if (page > maxPage) {
-      console.warn(`[IQRClient] ⚠️  Reached maximum page limit (page ${maxPage}, ${allOrders.length} orders). Some orders may not be included.`);
+    if (page >= maxPages) {
+      console.warn(`[IQRClient] ⚠️  Reached maximum page limit (${maxPages} pages, ${allOrders.length} orders fetched)`);
     }
 
     console.log('[IQRClient] Total orders received:', allOrders.length);
