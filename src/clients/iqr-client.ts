@@ -343,6 +343,16 @@ export class IQRClient {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysBack);
 
+    console.log(`[IQRClient] Date filter cutoff: ${cutoffDate.toISOString()} (${daysBack} days back)`);
+
+    // Debug: Log first 3 orders to see their dates
+    if (orders.length > 0) {
+      console.log('[IQRClient] Sample order dates (first 3):');
+      orders.slice(0, 3).forEach((order, idx) => {
+        console.log(`  Order ${idx + 1} (${order.orderNumber}): orderDate="${order.orderDate}", saleDate="${order.saleDate}"`);
+      });
+    }
+
     return orders.filter(order => {
       if (!order.orderDate) return false;
       const saleDate = new Date(order.orderDate);
