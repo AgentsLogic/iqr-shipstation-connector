@@ -272,12 +272,12 @@ export class IQRClient {
     console.log('[IQRClient] Fetching sales orders with pagination...');
 
     let allOrders: IQRRawOrder[] = [];
-    // Start from page 40 and fetch until we reach the end or find recent orders
-    // Page 40 had order #200215 from Nov 2023, so we'll continue from there
-    let page = 40; // Start from page 40 (last known working page)
+    // Start from page 0 and fetch ALL pages until API returns fewer than 100 orders
+    // This will show us the complete order range and help find orders #38771 and #38772
+    let page = 0; // Start from beginning
     let hasMore = true;
     const pageSize = 100; // Fetch 100 orders per page
-    const maxPages = 100; // Fetch up to page 100 (will stop earlier if we reach the end)
+    const maxPages = 50; // Safety limit - will stop when API returns < 100 orders
 
     while (hasMore && page < maxPages) {
       console.log(`[IQRClient] Fetching page ${page}...`);
