@@ -272,7 +272,7 @@ export class IQRClient {
     let page = 0; // IQR API pages start at 0
     let hasMore = true;
     const pageSize = 100; // Fetch 100 orders per page
-    const maxPages = 50; // Safety limit: max 5000 orders (50 pages * 100 per page)
+    const maxPages = 10; // Reduced limit to prevent API timeouts (1000 orders max)
 
     while (hasMore && page < maxPages) {
       console.log(`[IQRClient] Fetching page ${page}...`);
