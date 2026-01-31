@@ -272,12 +272,12 @@ export class IQRClient {
     console.log('[IQRClient] Fetching sales orders with pagination...');
 
     let allOrders: IQRRawOrder[] = [];
-    // Since IQR API only supports oldest-first sorting, we need to fetch from page 0
-    // and keep going until we find recent orders or hit the max page limit
-    let page = 0; // Start from page 0
+    // Testing: Start from page 50 to see what order numbers we're dealing with
+    // This will help us understand the order numbering system
+    let page = 50; // Start from page 50 to skip old orders
     let hasMore = true;
     const pageSize = 100; // Fetch 100 orders per page
-    const maxPages = 100; // Fetch up to 100 pages (10,000 orders) - will increase if needed
+    const maxPages = 100; // Fetch up to page 100 for testing
 
     while (hasMore && page < maxPages) {
       console.log(`[IQRClient] Fetching page ${page}...`);
