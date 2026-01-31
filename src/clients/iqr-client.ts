@@ -272,30 +272,28 @@ export class IQRClient {
     console.log('[IQRClient] Fetching sales orders with pagination...');
 
     let allOrders: IQRRawOrder[] = [];
-    // Try using POST with a filter body instead of GET
-    // The IQR API might support filtering via POST request body
+    // Try the GetOpenSOs endpoint - maybe there's a dedicated endpoint for open orders
     let page = 0;
     let hasMore = true;
     const pageSize = 100;
     let pagesProcessed = 0;
-    const maxPages = 10; // Keep low for testing
+    const maxPages = 10;
 
-    console.log('[IQRClient] Attempting to fetch orders using POST with filter...');
+    console.log('[IQRClient] Trying GetOpenSOs endpoint...');
 
     while (hasMore && pagesProcessed < maxPages) {
       console.log(`[IQRClient] Fetching page ${page}...`);
 
       try {
-        // Try POST method with filter in body
+        // Try GetOpenSOs endpoint first
         const rawOrders = await this.request<IQRRawOrder[]>(
-          '/webapi.svc/SO/JSON/GetSOs',
+          '/webapi.svc/SO/JSON/GetOpenSOs',
           {
-            method: 'POST',
-            body: {
+            method: 'GET',
+            queryParams: {
               Page: page,
               PageSize: pageSize,
               SortBy: 0,
-              Status: 'Open',
             },
           }
         );
