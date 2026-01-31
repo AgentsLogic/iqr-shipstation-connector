@@ -272,21 +272,67 @@ export class IQRClient {
     console.log('[IQRClient] Fetching sales orders with pagination...');
 
     let allOrders: IQRRawOrder[] = [];
-    // Try SortBy=1 (descending) to get newest orders first
-    // This way we can get Luis's 2026 orders on page 0 instead of page 41+
-    let page = 0;
-    let hasMore = true;
-    const pageSize = 100;
-    let pagesProcessed = 0;
-    const maxPages = 5; // Only need a few pages if sorted descending
 
-    console.log('[IQRClient] Trying SortBy=1 (descending) to get newest orders first...');
+    // STRATEGY: Try to fetch specific recent order numbers directly
+    // Luis's orders are #38791, #38792, #38793 - let's try fetching by order number
+    const recentOrderNumbers = [38793, 38792, 38791, 38790, 38789, 38788, 38787, 38786, 38785];
+
+    console.log('[IQRClient] Trying to fetch specific orders by number...');
+
+    for (const orderNum of recentOrderNumbers) {
+      try {
+        console.log(`[IQRClient] Trying to fetch order #${orderNum}...`);
+
+        // Try GetSO endpoint with order number
+        const rawOrder = await this.request<IQRRawOrder>(
+          `/webapi.svc/SO/JSON/GetSO/${orderNum}`,
+          {
+            method: 'GET',
+          }
+        );
+
+        if (rawOrder) {
+          console.log(`[IQRClient] Successfully fetched order #${orderNum}`);
+          allOrders.push(rawOrder);
+        }
+      } catch (error) {
+        console.log(`[IQRClient] Could not fetch order #${orderNum}: ${error}`);
+        // Try alternative endpoint format
+        try {
+          const rawOrder = await this.request<IQRRawOrder>(
+            '/webapi.svc/SO/JSON/GetSO',
+            {
+              method: 'GET',
+              queryParams: { SO: orderNum },
+            }
+          );
+          if (rawOrder) {
+            console.log(`[IQRClient] Successfully fetched order #${orderNum} via query param`);
+            allOrders.push(rawOrder);
+          }
+        } catch (error2) {
+          console.log(`[IQRClient] Alternative also failed for #${orderNum}: ${error2}`);
+        }
+      }
+    }
+
+    // If direct fetch worked, skip pagination
+    if (allOrders.length > 0) {
+      console.log(`[IQRClient] Direct fetch got ${allOrders.length} orders, skipping pagination`);
+    } else {
+      // Fall back to pagination if direct fetch didn't work
+      console.log('[IQRClient] Direct fetch failed, falling back to pagination...');
+
+      let page = 0;
+      let hasMore = true;
+      const pageSize = 100;
+      let pagesProcessed = 0;
+      const maxPages = 40; // Stop before page 41 which crashes
 
     while (hasMore && pagesProcessed < maxPages) {
       console.log(`[IQRClient] Fetching page ${page}...`);
 
       try {
-        // Try SortBy=1 for descending order (newest first)
         const rawOrders = await this.request<IQRRawOrder[]>(
           '/webapi.svc/SO/JSON/GetSOs',
           {
@@ -294,7 +340,7 @@ export class IQRClient {
             queryParams: {
               Page: page,
               PageSize: pageSize,
-              SortBy: 1, // TRY: 1 = descending (newest first)?
+              SortBy: 0,
             },
           }
         );
@@ -334,6 +380,7 @@ export class IQRClient {
     if (pagesProcessed >= maxPages) {
       console.warn(`[IQRClient] ⚠️  Reached maximum page limit (${maxPages} pages, ${allOrders.length} orders fetched)`);
     }
+    } // Close the else block for fallback pagination
 
     console.log('[IQRClient] Total orders received:', allOrders.length);
 
