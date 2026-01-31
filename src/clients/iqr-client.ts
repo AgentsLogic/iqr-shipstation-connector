@@ -305,7 +305,7 @@ export class IQRClient {
         // Log the last order on this page to track progress
         if (rawOrders.length > 0) {
           const lastOrder = rawOrders[rawOrders.length - 1];
-          console.log(`[IQRClient] Page ${page} last order: #${lastOrder.so} (${lastOrder.orderdate || 'no date'})`);
+          console.log(`[IQRClient] Page ${page} last order: #${lastOrder.so} (${lastOrder.saledate || 'no date'})`);
         }
 
         // If we got fewer orders than the page size, we've reached the end
