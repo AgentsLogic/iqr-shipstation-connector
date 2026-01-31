@@ -272,13 +272,12 @@ export class IQRClient {
     console.log('[IQRClient] Fetching sales orders with pagination...');
 
     let allOrders: IQRRawOrder[] = [];
-    // WORKAROUND: Since IQR API only supports oldest-first sorting, and recent orders are at the end,
-    // we start from a high page number to get recent orders.
-    // TODO: Contact IQR team to add date filtering or reverse sorting to the API
-    let page = 100; // Start from page 100 to test - will adjust based on results
+    // Since IQR API only supports oldest-first sorting, we need to fetch from page 0
+    // and keep going until we find recent orders or hit the max page limit
+    let page = 0; // Start from page 0
     let hasMore = true;
     const pageSize = 100; // Fetch 100 orders per page
-    const maxPages = 400; // Fetch up to page 400
+    const maxPages = 100; // Fetch up to 100 pages (10,000 orders) - will increase if needed
 
     while (hasMore && page < maxPages) {
       console.log(`[IQRClient] Fetching page ${page}...`);
@@ -303,8 +302,15 @@ export class IQRClient {
       } else {
         allOrders = allOrders.concat(rawOrders);
 
+        // Log the last order on this page to track progress
+        if (rawOrders.length > 0) {
+          const lastOrder = rawOrders[rawOrders.length - 1];
+          console.log(`[IQRClient] Page ${page} last order: #${lastOrder.so} (${lastOrder.orderdate || 'no date'})`);
+        }
+
         // If we got fewer orders than the page size, we've reached the end
         if (ordersReceived < pageSize) {
+          console.log(`[IQRClient] Reached end of orders at page ${page}`);
           hasMore = false;
         } else {
           page++;
