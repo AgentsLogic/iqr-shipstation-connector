@@ -272,13 +272,15 @@ export class IQRClient {
     console.log('[IQRClient] Fetching sales orders with pagination...');
 
     let allOrders: IQRRawOrder[] = [];
-    // Fetch ALL pages until we reach the end (API returns < 100 orders)
-    // We'll filter by date on the client side after fetching
-    let page = 0; // Start from page 0
+    // Try to filter by Status=Open in the API call to reduce data volume
+    // This might allow us to get only open orders without fetching all historical data
+    let page = 0;
     let hasMore = true;
-    const pageSize = 100; // Fetch 100 orders per page
+    const pageSize = 100;
     let pagesProcessed = 0;
-    const maxPages = 100; // Safety limit - stop after 100 pages (10,000 orders) to prevent infinite loops
+    const maxPages = 20; // Reduced - if filtering works, we should need fewer pages
+
+    console.log('[IQRClient] Attempting to fetch OPEN orders only from API...');
 
     while (hasMore && pagesProcessed < maxPages) {
       console.log(`[IQRClient] Fetching page ${page}...`);
@@ -291,7 +293,8 @@ export class IQRClient {
             queryParams: {
               Page: page,
               PageSize: pageSize,
-              SortBy: 0, // API only supports 0 (ascending/oldest first)
+              SortBy: 0,
+              Status: 'Open', // TRY adding Status filter to API call
             },
           }
         );
