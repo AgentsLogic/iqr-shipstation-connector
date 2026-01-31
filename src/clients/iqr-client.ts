@@ -199,6 +199,9 @@ export class IQRClient {
       console.log('[IQRClient] Request body:', JSON.stringify(options.body));
     }
 
+    // Debug: Log session token (first 10 chars only for security)
+    console.log(`[IQRClient] Using session token: ${this.sessionToken?.substring(0, 10)}...`);
+
     const response = await fetch(url, {
       method,
       headers: {
