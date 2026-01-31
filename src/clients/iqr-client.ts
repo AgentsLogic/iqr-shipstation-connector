@@ -202,16 +202,34 @@ export class IQRClient {
     // Debug: Log session token (first 10 chars only for security)
     console.log(`[IQRClient] Using session token: ${this.sessionToken?.substring(0, 10)}...`);
 
-    const response = await fetch(url, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Encoding': 'UTF8',
-        'Accept': 'application/json',
-        'iqr-session-token': this.sessionToken!,
-      },
-      body: options?.body ? JSON.stringify(options.body) : undefined,
-    });
+    // Add timeout to prevent hanging requests from crashing the server
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.log(`[IQRClient] Request timeout after 30 seconds, aborting...`);
+      controller.abort();
+    }, 30000); // 30 second timeout
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Encoding': 'UTF8',
+          'Accept': 'application/json',
+          'iqr-session-token': this.sessionToken!,
+        },
+        body: options?.body ? JSON.stringify(options.body) : undefined,
+        signal: controller.signal,
+      });
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout - IQR API took too long to respond');
+      }
+      throw error;
+    }
+    clearTimeout(timeoutId);
 
     if (response.status === 401) {
       // Token expired, re-authenticate and retry
@@ -327,7 +345,8 @@ export class IQRClient {
       let hasMore = true;
       const pageSize = 100;
       let pagesProcessed = 0;
-      const maxPages = 40; // Stop before page 41 which crashes
+      // Now safe to fetch beyond page 40 - we have request timeout protection
+      const maxPages = 100; // Allow up to 100 pages (10,000 orders)
 
     while (hasMore && pagesProcessed < maxPages) {
       console.log(`[IQRClient] Fetching page ${page}...`);
