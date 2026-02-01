@@ -295,150 +295,190 @@ export class IQRClient {
     let allOrders: IQRRawOrder[] = [];
     const pageSize = 100;
 
-    // STRATEGY 1: Try different shipment endpoints to find recent orders
-    console.log('[IQRClient] 🔍 STRATEGY 1: Trying shipment endpoints...');
+    // STRATEGY 1: Try to fetch Luis's specific orders directly by order number
+    console.log('[IQRClient] 🔍 STRATEGY 1: Trying to fetch specific orders #38791, #38792, #38793...');
 
-    const shipmentEndpoints = [
-      '/webapi.svc/SalesOrder/JSON/GetShipments',
-      '/webapi.svc/SO/JSON/GetShipments',
-      '/webapi.svc/Shipment/JSON/GetShipments',
-      '/webapi.svc/Order/JSON/GetShipments',
+    const targetOrderNumbers = [38793, 38792, 38791];
+    const directFetchEndpoints = [
+      { path: '/webapi.svc/SO/JSON/GetSO', method: 'GET' as const },
+      { path: '/webapi.svc/SO/JSON/GetSO', method: 'POST' as const },
+      { path: '/webapi.svc/Order/json/GetOrder', method: 'POST' as const },
+      { path: '/webapi.svc/SalesOrder/JSON/GetSO', method: 'GET' as const },
     ];
 
-    for (const endpoint of shipmentEndpoints) {
-      try {
-        console.log(`[IQRClient] Trying ${endpoint}...`);
-        const shipments = await this.request<any[]>(endpoint, {
-          method: 'GET',
-          queryParams: { Page: 0, PageSize: 10 },
-        });
+    for (const orderNum of targetOrderNumbers) {
+      for (const { path, method } of directFetchEndpoints) {
+        try {
+          console.log(`[IQRClient] Trying ${method} ${path} for order #${orderNum}...`);
 
-        if (shipments && Array.isArray(shipments) && shipments.length > 0) {
-          console.log(`[IQRClient] ✅ ${endpoint} works! Got ${shipments.length} shipments`);
-          console.log(`[IQRClient] Sample:`, JSON.stringify(shipments[0]).substring(0, 300));
-
-          // Extract SO numbers
-          const soNumbers = shipments.map((s: any) => s.so || s.SO || s.soid || s.SOID).filter(Boolean);
-          if (soNumbers.length > 0) {
-            console.log(`[IQRClient] SO numbers from shipments:`, soNumbers.slice(0, 10));
+          let result: any;
+          if (method === 'GET') {
+            result = await this.request<any>(`${path}/${orderNum}`, { method: 'GET' });
+          } else {
+            result = await this.request<any>(path, {
+              method: 'POST',
+              body: { OrderId: orderNum, so: orderNum, SONumber: orderNum }
+            });
           }
-          break;
+
+          if (result) {
+            console.log(`[IQRClient] ✅ FOUND ORDER #${orderNum}!`);
+            console.log(`[IQRClient] Result:`, JSON.stringify(result).substring(0, 500));
+
+            // If we found it, add to allOrders
+            if (Array.isArray(result)) {
+              allOrders = allOrders.concat(result);
+            } else {
+              allOrders.push(result);
+            }
+            break; // Found this order, try next order number
+          }
+        } catch (e: any) {
+          // Only log first 50 chars of error
+          const errMsg = e.message.substring(0, 50);
+          if (!errMsg.includes('404')) {
+            console.log(`[IQRClient] ${path}: ${errMsg}`);
+          }
         }
-      } catch (e: any) {
-        console.log(`[IQRClient] ${endpoint}: ${e.message.substring(0, 50)}`);
       }
     }
 
-    // STRATEGY 2: Try to get orders by status filter (different endpoint variations)
-    console.log('[IQRClient] 🔍 STRATEGY 2: Trying status-filtered endpoints...');
+    // STRATEGY 2: Try GetSOs with different query parameters
+    console.log('[IQRClient] 🔍 STRATEGY 2: Trying GetSOs with filters...');
 
-    const statusEndpoints = [
-      { path: '/webapi.svc/SO/JSON/GetOpenSOs', name: 'GetOpenSOs' },
-      { path: '/webapi.svc/SO/JSON/GetSaleOrders', name: 'GetSaleOrders' },
-      { path: '/webapi.svc/SalesOrder/JSON/GetSOs', name: 'SalesOrder/GetSOs' },
+    const filterAttempts: Array<Record<string, string | number>> = [
+      { SONumber: 38793, Page: 0, PageSize: 10, SortBy: 0 },
+      { so: 38793, Page: 0, PageSize: 10, SortBy: 0 },
+      { Status: 'Open', Page: 0, PageSize: 10, SortBy: 0 },
+      { ClientId: 'LUISTORRES', Page: 0, PageSize: 10, SortBy: 0 },
+      { clientid: 'LUISTORRES', Page: 0, PageSize: 10, SortBy: 0 },
     ];
 
-    for (const { path, name } of statusEndpoints) {
+    for (const queryParams of filterAttempts) {
       try {
-        console.log(`[IQRClient] Trying ${name}...`);
-        const orders = await this.request<any[]>(path, {
+        console.log(`[IQRClient] Trying GetSOs with filter:`, queryParams);
+        const orders = await this.request<any[]>('/webapi.svc/SO/JSON/GetSOs', {
           method: 'GET',
-          queryParams: { Page: 0, PageSize: 10 },
+          queryParams,
         });
 
         if (orders && Array.isArray(orders) && orders.length > 0) {
-          console.log(`[IQRClient] ✅ ${name} works! Got ${orders.length} orders`);
+          console.log(`[IQRClient] ✅ Filter worked! Got ${orders.length} orders`);
           const sample = orders[0];
-          console.log(`[IQRClient] Sample order: #${sample.so} status=${sample.status} date=${sample.saledate}`);
-          break;
+          console.log(`[IQRClient] Sample: #${sample.so} client=${sample.clientid} date=${sample.saledate}`);
+
+          // Check if we got Luis's orders
+          const luisOrders = orders.filter((o: any) => o.so === 38791 || o.so === 38792 || o.so === 38793);
+          if (luisOrders.length > 0) {
+            console.log(`[IQRClient] 🎉 FOUND LUIS'S ORDERS via filter!`);
+            allOrders = allOrders.concat(orders);
+            break;
+          }
         }
       } catch (e: any) {
-        console.log(`[IQRClient] ${name}: ${e.message.substring(0, 50)}`);
+        console.log(`[IQRClient] Filter failed: ${e.message.substring(0, 50)}`);
       }
     }
 
-    // STRATEGY 3: Fetch ALL orders using small page size to avoid timeout
-    // The API seems to have orders up to ~page 184 (June 2024)
-    // We need to find Luis's orders #38791-38793 from Jan 2026
-    console.log('[IQRClient] 🔍 STRATEGY 3: Fetching all orders with small page size...');
+    // STRATEGY 3: Quick fetch - pages 0-40 with size 100, then 160-185 with size 25
+    // This gets us orders from 2014 to June 2024 without timing out
+    console.log('[IQRClient] 🔍 STRATEGY 3: Quick fetch (pages 0-40 + 160-185)...');
 
-    const smallPageSize = 25;
-    let page = 0;
-    let consecutiveErrors = 0;
-    let lastOrderDate = '';
-    let lastOrderNum = 0;
-
-    while (consecutiveErrors < 3) {
+    // Part A: Fetch pages 0-40 with pageSize=100 (known working, ~4100 orders)
+    console.log('[IQRClient] Fetching pages 0-40 (size 100)...');
+    for (let p = 0; p <= 40; p++) {
       try {
         const rawOrders = await this.request<IQRRawOrder[]>(
           '/webapi.svc/SO/JSON/GetSOs',
           {
             method: 'GET',
-            queryParams: {
-              Page: page,
-              PageSize: smallPageSize,
-              SortBy: 0,
-            },
+            queryParams: { Page: p, PageSize: 100, SortBy: 0 },
           }
         );
 
-        consecutiveErrors = 0; // Reset on success
-
         if (rawOrders && rawOrders.length > 0) {
-          const lastOrder = rawOrders[rawOrders.length - 1];
-          lastOrderDate = lastOrder.saledate || '';
-          lastOrderNum = lastOrder.so || 0;
-
-          // Log every 20 pages to track progress
-          if (page % 20 === 0) {
-            console.log(`[IQRClient] Page ${page}: ${rawOrders.length} orders, last: #${lastOrderNum} (${lastOrderDate})`);
-          }
-
-          // Check for Luis's specific orders
+          // Check for Luis's orders in each page
           const luisOrders = rawOrders.filter(o =>
-            o.so === 38791 || o.so === 38792 || o.so === 38793 ||
-            (o.saledate && o.saledate.includes('2026'))
+            o.so === 38791 || o.so === 38792 || o.so === 38793
           );
           if (luisOrders.length > 0) {
-            console.log(`[IQRClient] 🎉 FOUND TARGET ORDERS!`);
-            luisOrders.forEach(o => console.log(`[IQRClient]   Order #${o.so}: ${o.saledate} status=${o.status}`));
+            console.log(`[IQRClient] 🎉 FOUND LUIS'S ORDERS on page ${p}!`);
+            luisOrders.forEach(o => console.log(`[IQRClient]   Order #${o.so}: ${o.saledate}`));
           }
 
           allOrders = allOrders.concat(rawOrders);
-          page++;
 
-          // Safety limit - don't fetch more than 300 pages (7500 orders)
-          if (page >= 300) {
-            console.log(`[IQRClient] Reached page limit (300), stopping`);
-            break;
+          if (p % 10 === 0) {
+            const last = rawOrders[rawOrders.length - 1];
+            console.log(`[IQRClient] Page ${p}: last #${last.so} (${last.saledate})`);
           }
         } else {
-          console.log(`[IQRClient] Page ${page}: Empty - reached end`);
           break;
         }
       } catch (error: any) {
-        consecutiveErrors++;
-        console.log(`[IQRClient] Page ${page}: ${error.message.substring(0, 50)}`);
-
-        if (error.message.includes('timeout')) {
-          console.log(`[IQRClient] Timeout on page ${page}, trying next...`);
-          page++;
-          continue;
-        }
-
-        // "Object reference" error means we've gone past the end
-        if (error.message.includes('Object reference') || error.message.includes('cast')) {
-          console.log(`[IQRClient] Reached end of data at page ${page}`);
-          break;
-        }
-
-        page++;
+        console.log(`[IQRClient] Page ${p} error: ${error.message.substring(0, 40)}`);
+        break;
       }
     }
 
+    console.log(`[IQRClient] After pages 0-40: ${allOrders.length} orders`);
+
+    // Part B: Fetch pages 160-185 with pageSize=25 (newer orders, June 2024)
+    console.log('[IQRClient] Fetching pages 160-185 (size 25) for newer orders...');
+    for (let p = 160; p <= 185; p++) {
+      try {
+        const rawOrders = await this.request<IQRRawOrder[]>(
+          '/webapi.svc/SO/JSON/GetSOs',
+          {
+            method: 'GET',
+            queryParams: { Page: p, PageSize: 25, SortBy: 0 },
+          }
+        );
+
+        if (rawOrders && rawOrders.length > 0) {
+          // Check for Luis's orders or 2026 orders
+          const targetOrders = rawOrders.filter(o =>
+            o.so === 38791 || o.so === 38792 || o.so === 38793 ||
+            (o.saledate && o.saledate.includes('2026'))
+          );
+          if (targetOrders.length > 0) {
+            console.log(`[IQRClient] 🎉 FOUND TARGET ORDERS on page ${p}!`);
+            targetOrders.forEach(o => console.log(`[IQRClient]   Order #${o.so}: ${o.saledate}`));
+          }
+
+          allOrders = allOrders.concat(rawOrders);
+
+          const last = rawOrders[rawOrders.length - 1];
+          console.log(`[IQRClient] Page ${p} (size 25): last #${last.so} (${last.saledate})`);
+        } else {
+          console.log(`[IQRClient] Page ${p}: empty`);
+          break;
+        }
+      } catch (error: any) {
+        console.log(`[IQRClient] Page ${p} error: ${error.message.substring(0, 40)}`);
+        // "Object reference" error means we've gone past the end
+        if (error.message.includes('Object reference') || error.message.includes('cast')) {
+          console.log(`[IQRClient] Reached end of data at page ${p}`);
+          break;
+        }
+        // Continue trying next pages on other errors
+      }
+    }
+
+    // Summary
     console.log(`[IQRClient] ========================================`);
     console.log(`[IQRClient] TOTAL ORDERS FETCHED: ${allOrders.length}`);
-    console.log(`[IQRClient] LAST ORDER: #${lastOrderNum} (${lastOrderDate})`);
+
+    // Find the newest order
+    let newestDate = '';
+    let newestOrderNum = 0;
+    for (const o of allOrders) {
+      if (o.saledate && o.saledate > newestDate) {
+        newestDate = o.saledate;
+        newestOrderNum = o.so || 0;
+      }
+    }
+    console.log(`[IQRClient] NEWEST ORDER: #${newestOrderNum} (${newestDate})`);
     console.log(`[IQRClient] ========================================`);
 
     // Check if we found any 2026 orders
@@ -446,8 +486,16 @@ export class IQRClient {
     console.log(`[IQRClient] Orders from 2026: ${orders2026.length}`);
 
     // Check for Luis's specific orders
-    const luisOrders = allOrders.filter(o => o.so === 38791 || o.so === 38792 || o.so === 38793);
-    console.log(`[IQRClient] Luis's orders (38791-38793): ${luisOrders.length}`);
+    const foundLuisOrders = allOrders.filter(o => o.so === 38791 || o.so === 38792 || o.so === 38793);
+    console.log(`[IQRClient] Luis's orders (38791-38793): ${foundLuisOrders.length}`);
+
+    if (foundLuisOrders.length > 0) {
+      console.log(`[IQRClient] 🎉🎉🎉 SUCCESS! Found Luis's orders!`);
+      foundLuisOrders.forEach(o => console.log(`[IQRClient]   #${o.so}: ${o.saledate} status=${o.status}`));
+    } else {
+      console.log(`[IQRClient] ❌ Luis's orders NOT FOUND in API response`);
+      console.log(`[IQRClient] This means the IQR API does not contain orders from Jan 2026`);
+    }
 
     if (allOrders.length > 0) {
       const orders = allOrders.map(raw => this.transformOrder(raw));
