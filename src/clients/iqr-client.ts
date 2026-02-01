@@ -357,24 +357,19 @@ export class IQRClient {
       }
     }
 
-    // STRATEGY 3: Use smaller page size to get RECENT orders only
-    // Skip old orders entirely - just fetch from where we expect recent orders
-    // Page 185 with size 25 = ~4625 orders = June 2024
-    // Luis's orders are from Jan 2026, so we need to go higher
-    console.log('[IQRClient] 🔍 STRATEGY 3: Fetching recent orders with small page size...');
+    // STRATEGY 3: Fetch ALL orders using small page size to avoid timeout
+    // The API seems to have orders up to ~page 184 (June 2024)
+    // We need to find Luis's orders #38791-38793 from Jan 2026
+    console.log('[IQRClient] 🔍 STRATEGY 3: Fetching all orders with small page size...');
 
     const smallPageSize = 25;
-    // Start from page 185 (June 2024) and go up to find 2026 orders
-    // Each page = 25 orders, so we need ~40 more pages to cover 18 months
-    const startPage = 185;
-    const endPage = 300; // Should cover well into 2026
-    let found2026 = false;
+    let page = 0;
     let consecutiveErrors = 0;
+    let lastOrderDate = '';
+    let lastOrderNum = 0;
 
-    for (let page = startPage; page <= endPage; page++) {
+    while (consecutiveErrors < 3) {
       try {
-        console.log(`[IQRClient] Trying page ${page} (size ${smallPageSize})...`);
-
         const rawOrders = await this.request<IQRRawOrder[]>(
           '/webapi.svc/SO/JSON/GetSOs',
           {
@@ -390,63 +385,85 @@ export class IQRClient {
         consecutiveErrors = 0; // Reset on success
 
         if (rawOrders && rawOrders.length > 0) {
-          const firstOrder = rawOrders[0];
           const lastOrder = rawOrders[rawOrders.length - 1];
-          console.log(`[IQRClient] ✅ Page ${page}: Got ${rawOrders.length} orders!`);
-          console.log(`[IQRClient]    First: #${firstOrder.so} (${firstOrder.saledate})`);
-          console.log(`[IQRClient]    Last: #${lastOrder.so} (${lastOrder.saledate})`);
-          allOrders = allOrders.concat(rawOrders);
+          lastOrderDate = lastOrder.saledate || '';
+          lastOrderNum = lastOrder.so || 0;
 
-          // Check if we found 2026 orders
-          if (lastOrder.saledate && lastOrder.saledate.includes('2026')) {
-            console.log(`[IQRClient] 🎉 Found 2026 orders!`);
-            found2026 = true;
+          // Log every 20 pages to track progress
+          if (page % 20 === 0) {
+            console.log(`[IQRClient] Page ${page}: ${rawOrders.length} orders, last: #${lastOrderNum} (${lastOrderDate})`);
+          }
+
+          // Check for Luis's specific orders
+          const luisOrders = rawOrders.filter(o =>
+            o.so === 38791 || o.so === 38792 || o.so === 38793 ||
+            (o.saledate && o.saledate.includes('2026'))
+          );
+          if (luisOrders.length > 0) {
+            console.log(`[IQRClient] 🎉 FOUND TARGET ORDERS!`);
+            luisOrders.forEach(o => console.log(`[IQRClient]   Order #${o.so}: ${o.saledate} status=${o.status}`));
+          }
+
+          allOrders = allOrders.concat(rawOrders);
+          page++;
+
+          // Safety limit - don't fetch more than 300 pages (7500 orders)
+          if (page >= 300) {
+            console.log(`[IQRClient] Reached page limit (300), stopping`);
+            break;
           }
         } else {
-          console.log(`[IQRClient] Page ${page}: Empty - reached end of orders`);
+          console.log(`[IQRClient] Page ${page}: Empty - reached end`);
           break;
         }
       } catch (error: any) {
-        console.log(`[IQRClient] Page ${page}: ${error.message}`);
         consecutiveErrors++;
+        console.log(`[IQRClient] Page ${page}: ${error.message.substring(0, 50)}`);
 
-        // Skip corrupted pages (like page 185 with "Specified cast is not valid")
-        if (error.message.includes('cast') || error.message.includes('404')) {
-          console.log(`[IQRClient] Skipping corrupted page ${page}, trying next...`);
-          continue;
-        }
         if (error.message.includes('timeout')) {
           console.log(`[IQRClient] Timeout on page ${page}, trying next...`);
+          page++;
           continue;
         }
-        // Stop after 5 consecutive errors
-        if (consecutiveErrors >= 5) {
-          console.log(`[IQRClient] Too many consecutive errors, stopping pagination`);
+
+        // "Object reference" error means we've gone past the end
+        if (error.message.includes('Object reference') || error.message.includes('cast')) {
+          console.log(`[IQRClient] Reached end of data at page ${page}`);
           break;
         }
-        continue; // Try next page
+
+        page++;
       }
     }
 
-    console.log(`[IQRClient] Total orders from small-page strategy: ${allOrders.length}`);
+    console.log(`[IQRClient] ========================================`);
+    console.log(`[IQRClient] TOTAL ORDERS FETCHED: ${allOrders.length}`);
+    console.log(`[IQRClient] LAST ORDER: #${lastOrderNum} (${lastOrderDate})`);
+    console.log(`[IQRClient] ========================================`);
+
+    // Check if we found any 2026 orders
+    const orders2026 = allOrders.filter(o => o.saledate && o.saledate.includes('2026'));
+    console.log(`[IQRClient] Orders from 2026: ${orders2026.length}`);
+
+    // Check for Luis's specific orders
+    const luisOrders = allOrders.filter(o => o.so === 38791 || o.so === 38792 || o.so === 38793);
+    console.log(`[IQRClient] Luis's orders (38791-38793): ${luisOrders.length}`);
 
     if (allOrders.length > 0) {
-      console.log(`[IQRClient] Transforming ${allOrders.length} orders...`);
       const orders = allOrders.map(raw => this.transformOrder(raw));
-      console.log(`[IQRClient] Returning ${orders.length} orders (skipping old pages 0-40)`);
       return orders;
     }
 
-    // STRATEGY 4: Only if strategy 3 failed, try pages 0-40
+    // STRATEGY 4: Fallback - should not reach here
     console.log('[IQRClient] 🔍 STRATEGY 4: Fetching pages 0-40 (known working range)...');
 
-    let page = 0;
+    let fallbackPage = 0;
     let hasMore = true;
     let pagesProcessed = 0;
     const maxPages = 41; // Stop before page 41 which times out
 
     while (hasMore && pagesProcessed < maxPages) {
-      console.log(`[IQRClient] Fetching page ${page}...`);
+      console.log(`[IQRClient] Fetching page ${fallbackPage}...`);
 
       try {
         const rawOrders = await this.request<IQRRawOrder[]>(
@@ -454,7 +471,7 @@ export class IQRClient {
           {
             method: 'GET',
             queryParams: {
-              Page: page,
+              Page: fallbackPage,
               PageSize: pageSize,
               SortBy: 0,
             },
@@ -462,10 +479,10 @@ export class IQRClient {
         );
 
         const ordersReceived = rawOrders?.length || 0;
-        console.log(`[IQRClient] Page ${page}: Received ${ordersReceived} orders`);
+        console.log(`[IQRClient] Page ${fallbackPage}: Received ${ordersReceived} orders`);
 
         if (ordersReceived === 0) {
-          console.log(`[IQRClient] No more orders at page ${page}`);
+          console.log(`[IQRClient] No more orders at page ${fallbackPage}`);
           hasMore = false;
         } else {
           allOrders = allOrders.concat(rawOrders);
@@ -473,22 +490,22 @@ export class IQRClient {
           // Log the last order on this page to track progress
           if (rawOrders.length > 0) {
             const lastOrder = rawOrders[rawOrders.length - 1];
-            console.log(`[IQRClient] Page ${page} last order: #${lastOrder.so} (${lastOrder.saledate || 'no date'})`);
+            console.log(`[IQRClient] Page ${fallbackPage} last order: #${lastOrder.so} (${lastOrder.saledate || 'no date'})`);
           }
 
           // If we got fewer orders than the page size, we've reached the end
           if (ordersReceived < pageSize) {
-            console.log(`[IQRClient] Reached end of orders at page ${page} (received ${ordersReceived} < ${pageSize})`);
+            console.log(`[IQRClient] Reached end of orders at page ${fallbackPage} (received ${ordersReceived} < ${pageSize})`);
             hasMore = false;
           } else {
-            page++;
+            fallbackPage++;
             pagesProcessed++;
           }
         }
       } catch (error: any) {
         // If we hit a 404 or any error, we've reached the end
-        console.log(`[IQRClient] Error fetching page ${page}: ${error.message}`);
-        console.log(`[IQRClient] Stopping pagination at page ${page}`);
+        console.log(`[IQRClient] Error fetching page ${fallbackPage}: ${error.message}`);
+        console.log(`[IQRClient] Stopping pagination at page ${fallbackPage}`);
         hasMore = false;
       }
     }
