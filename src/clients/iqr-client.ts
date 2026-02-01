@@ -281,21 +281,22 @@ export class IQRClient {
    * Get Sales Orders from IQ Reseller
    * Endpoint confirmed working: GET /webapi.svc/SO/JSON/GetSOs
    *
-   * SIMPLIFIED: Just fetch pages 0-40 (4100 orders up to Nov 2023)
-   * The IQR API does not contain orders after Nov 2023 - this is an IQR data issue
+   * Fetches all available orders using pagination
+   * Stops when we get an empty page or hit an error
    */
   async getOrders(params?: {
     status?: string;
     fromDate?: string;
     toDate?: string;
   }): Promise<IQROrder[]> {
-    console.log('[IQRClient] Fetching sales orders (pages 0-40)...');
+    console.log('[IQRClient] Fetching all sales orders...');
 
     const allOrders: IQRRawOrder[] = [];
     const pageSize = 100;
-    const maxPages = 41; // Pages 0-40 only (page 41+ times out)
+    let page = 0;
+    let consecutiveErrors = 0;
 
-    for (let page = 0; page < maxPages; page++) {
+    while (consecutiveErrors < 3) {
       try {
         const rawOrders = await this.request<IQRRawOrder[]>(
           '/webapi.svc/SO/JSON/GetSOs',
@@ -310,20 +311,39 @@ export class IQRClient {
           break;
         }
 
+        consecutiveErrors = 0; // Reset on success
         allOrders.push(...rawOrders);
 
         // Log progress every 10 pages
         if (page % 10 === 0) {
           const last = rawOrders[rawOrders.length - 1];
-          console.log(`[IQRClient] Page ${page}: ${allOrders.length} total orders, last #${last.so} (${last.saledate})`);
+          console.log(`[IQRClient] Page ${page}: ${allOrders.length} total, last #${last.so} (${last.saledate})`);
         }
+
+        page++;
       } catch (error: any) {
-        console.log(`[IQRClient] Page ${page} error: ${error.message.substring(0, 50)}`);
-        break; // Stop on error
+        consecutiveErrors++;
+        const errMsg = error.message || '';
+        console.log(`[IQRClient] Page ${page} error: ${errMsg.substring(0, 60)}`);
+
+        // "Object reference" error means we've gone past the end of data
+        if (errMsg.includes('Object reference') || errMsg.includes('cast')) {
+          console.log(`[IQRClient] Reached end of data at page ${page}`);
+          break;
+        }
+
+        // Try next page on other errors
+        page++;
       }
     }
 
     console.log(`[IQRClient] Fetched ${allOrders.length} orders total`);
+
+    // Check for Luis's orders (for debugging)
+    const luisOrders = allOrders.filter(o => o.so === 38791 || o.so === 38792 || o.so === 38793);
+    if (luisOrders.length > 0) {
+      console.log(`[IQRClient] 🎉 Found Luis's orders: ${luisOrders.map(o => o.so).join(', ')}`);
+    }
 
     // Transform and return
     if (allOrders.length > 0) {
@@ -332,7 +352,6 @@ export class IQRClient {
       return orders;
     }
 
-    // No orders fetched
     return [];
   }
 
