@@ -357,8 +357,71 @@ export class IQRClient {
       }
     }
 
-    // STRATEGY 3: Standard pagination for pages 0-40 (known working range)
-    console.log('[IQRClient] 🔍 STRATEGY 3: Fetching pages 0-40 (known working range)...');
+    // STRATEGY 3: Try smaller page sizes to get past problematic data
+    // Page 41 with 100 items times out - maybe smaller chunks work
+    console.log('[IQRClient] 🔍 STRATEGY 3: Trying smaller page size (25) for pages 160-200...');
+
+    // With pageSize=25, page 160 = same as page 40 with pageSize=100 (4000 items)
+    // So pages 164+ should have the newer orders
+    const smallPageSize = 25;
+    const startPage = 164; // Start where page 41 would be with size 100
+    const endPage = 200;
+
+    for (let page = startPage; page <= endPage; page++) {
+      try {
+        console.log(`[IQRClient] Trying page ${page} (size ${smallPageSize})...`);
+
+        const rawOrders = await this.request<IQRRawOrder[]>(
+          '/webapi.svc/SO/JSON/GetSOs',
+          {
+            method: 'GET',
+            queryParams: {
+              Page: page,
+              PageSize: smallPageSize,
+              SortBy: 0,
+            },
+          }
+        );
+
+        if (rawOrders && rawOrders.length > 0) {
+          const firstOrder = rawOrders[0];
+          const lastOrder = rawOrders[rawOrders.length - 1];
+          console.log(`[IQRClient] ✅ Page ${page}: Got ${rawOrders.length} orders!`);
+          console.log(`[IQRClient]    First: #${firstOrder.so} (${firstOrder.saledate})`);
+          console.log(`[IQRClient]    Last: #${lastOrder.so} (${lastOrder.saledate})`);
+          allOrders = allOrders.concat(rawOrders);
+
+          // Check if we found recent orders (2026)
+          if (lastOrder.saledate && lastOrder.saledate.includes('2026')) {
+            console.log(`[IQRClient] 🎉 Found 2026 orders! Continuing to fetch more...`);
+          }
+        } else {
+          console.log(`[IQRClient] Page ${page}: Empty - reached end`);
+          break;
+        }
+      } catch (error: any) {
+        console.log(`[IQRClient] Page ${page}: ${error.message}`);
+        if (error.message.includes('timeout')) {
+          console.log(`[IQRClient] Timeout on page ${page}, trying next...`);
+          continue;
+        }
+        break;
+      }
+    }
+
+    if (allOrders.length > 0) {
+      console.log(`[IQRClient] 🎉 Found ${allOrders.length} orders from small-page strategy!`);
+      // Return early if we found recent orders
+      const recentOrders = allOrders.filter(o => o.saledate && o.saledate.includes('2026'));
+      if (recentOrders.length > 0) {
+        console.log(`[IQRClient] Found ${recentOrders.length} orders from 2026!`);
+        const orders = allOrders.map(raw => this.transformOrder(raw));
+        return orders;
+      }
+    }
+
+    // STRATEGY 4: Standard pagination for pages 0-40 (known working range)
+    console.log('[IQRClient] 🔍 STRATEGY 4: Fetching pages 0-40 (known working range)...');
 
     let page = 0;
     let hasMore = true;
