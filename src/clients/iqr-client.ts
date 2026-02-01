@@ -366,10 +366,38 @@ export class IQRClient {
 
     console.log(`[IQRClient] Total orders fetched: ${allOrders.length}`);
 
-    // Check for Luis's orders
+    // Find newest order
+    let newestOrder = allOrders[0];
+    for (const o of allOrders) {
+      if (o.so && o.so > (newestOrder?.so || 0)) {
+        newestOrder = o;
+      }
+    }
+    if (newestOrder) {
+      console.log(`[IQRClient] Newest order: #${newestOrder.so} (${newestOrder.saledate})`);
+    }
+
+    // Check for Luis's orders (38791, 38792, 38793)
     const luisOrders = allOrders.filter(o => o.so === 38791 || o.so === 38792 || o.so === 38793);
     if (luisOrders.length > 0) {
-      console.log(`[IQRClient] 🎉 Found Luis's orders: ${luisOrders.map(o => o.so).join(', ')}`);
+      console.log(`[IQRClient] 🎉 Found Luis's orders!`);
+      luisOrders.forEach(o => console.log(`[IQRClient]   #${o.so}: ${o.saledate} client=${o.clientid} status=${o.status}`));
+    } else {
+      console.log(`[IQRClient] ❌ Luis's orders (38791-38793) NOT in API response`);
+      // Check if any orders have LUISTORRES as client
+      const luisClientOrders = allOrders.filter(o => o.clientid?.includes('LUIS'));
+      if (luisClientOrders.length > 0) {
+        console.log(`[IQRClient] Found ${luisClientOrders.length} orders with LUIS in clientid:`);
+        luisClientOrders.slice(0, 5).forEach(o => console.log(`[IQRClient]   #${o.so}: ${o.saledate} client=${o.clientid}`));
+      }
+    }
+
+    // Check for 2026 orders
+    const orders2026 = allOrders.filter(o => o.saledate?.includes('2026'));
+    console.log(`[IQRClient] Orders from 2026: ${orders2026.length}`);
+    if (orders2026.length > 0) {
+      console.log(`[IQRClient] 2026 orders sample:`);
+      orders2026.slice(0, 5).forEach(o => console.log(`[IQRClient]   #${o.so}: ${o.saledate} client=${o.clientid}`));
     }
 
     // Transform and return
