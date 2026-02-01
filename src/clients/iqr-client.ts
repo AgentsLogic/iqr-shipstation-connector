@@ -282,28 +282,82 @@ export class IQRClient {
    * Endpoint confirmed working: GET /webapi.svc/SO/JSON/GetSOs
    * Returns array of orders directly (not wrapped in Data property)
    *
-   * STRATEGY: Reverse pagination - start from high page numbers to find recent orders
-   * The IQR API returns orders oldest-first, and page 41+ times out due to data issues.
-   * So we try fetching from END first (e.g., page 50, 60, 70) to find where orders exist.
+   * STRATEGIES ATTEMPTED:
+   * 1. Reverse pagination (try high pages) - to skip problematic page 41
+   * 2. GetShipments with date filter (Task 4415) - to get recent orders via shipments
+   * 3. Standard pagination pages 0-40 (fallback)
    */
   async getOrders(params?: {
     status?: string;
     fromDate?: string;
     toDate?: string;
   }): Promise<IQROrder[]> {
-    console.log('[IQRClient] Fetching sales orders with REVERSE pagination strategy...');
+    console.log('[IQRClient] Fetching sales orders with MULTI-STRATEGY approach...');
 
     let allOrders: IQRRawOrder[] = [];
     const pageSize = 100;
 
-    // STRATEGY 1: Try high page numbers first to find the END of the list
-    // Pages 0-40 have ~4100 orders from 2014-2023. Luis's 2026 orders should be on later pages.
-    // We'll try pages beyond 41 to see if they work (the timeout might be specific to page 41)
+    // STRATEGY 1: Try GetShipments API with date filter (Task 4415 added date range support)
+    // This might give us SO numbers from recent shipments
+    console.log('[IQRClient] 🔍 STRATEGY 1: Trying GetShipments API with date range...');
 
-    console.log('[IQRClient] 🔍 REVERSE STRATEGY: Trying to find recent orders on higher pages...');
+    try {
+      const today = new Date();
+      const sevenDaysAgo = new Date(today);
+      sevenDaysAgo.setDate(today.getDate() - 7);
 
-    // Try pages 42-50 first (skip the problematic page 41)
-    const highPagesToTry = [42, 43, 44, 45, 50, 55, 60, 70, 80, 100];
+      const fromDate = sevenDaysAgo.toISOString().split('T')[0]; // YYYY-MM-DD
+      const toDate = today.toISOString().split('T')[0];
+
+      console.log(`[IQRClient] Trying shipments from ${fromDate} to ${toDate}...`);
+
+      // Try various date parameter names that might work
+      const dateParamNames = [
+        ['ScheduledFromDate', 'ScheduledToDate'],
+        ['FromDate', 'ToDate'],
+        ['DateFrom', 'DateTo'],
+        ['ScheduleFrom', 'ScheduleTo'],
+      ];
+
+      for (const [fromKey, toKey] of dateParamNames) {
+        try {
+          const params: Record<string, string | number> = {
+            Page: 0,
+            PageSize: 100,
+            [fromKey]: fromDate,
+            [toKey]: toDate,
+          };
+          console.log(`[IQRClient] Trying GetShipments with params:`, params);
+
+          const shipments = await this.request<any[]>(
+            '/webapi.svc/Shipment/JSON/GetShipments',
+            {
+              method: 'GET',
+              queryParams: params,
+            }
+          );
+
+          if (shipments && shipments.length > 0) {
+            console.log(`[IQRClient] ✅ GetShipments returned ${shipments.length} results!`);
+            console.log(`[IQRClient] Sample shipment:`, JSON.stringify(shipments[0]).substring(0, 500));
+
+            // Extract SO numbers from shipments
+            const soNumbers = shipments.map((s: any) => s.so || s.SO || s.sonumber || s.SONumber).filter(Boolean);
+            console.log(`[IQRClient] SO numbers from shipments:`, soNumbers);
+            break; // Found working params
+          }
+        } catch (e: any) {
+          console.log(`[IQRClient] GetShipments failed: ${e.message}`);
+        }
+      }
+    } catch (error: any) {
+      console.log(`[IQRClient] GetShipments strategy failed: ${error.message}`);
+    }
+
+    // STRATEGY 2: Try high page numbers (skip problematic page 41)
+    console.log('[IQRClient] 🔍 STRATEGY 2: Trying high page numbers...');
+
+    const highPagesToTry = [42, 43, 44, 45, 46, 47, 48, 49, 50];
 
     for (const page of highPagesToTry) {
       try {
@@ -325,27 +379,29 @@ export class IQRClient {
           const firstOrder = rawOrders[0];
           const lastOrder = rawOrders[rawOrders.length - 1];
           console.log(`[IQRClient] ✅ Page ${page}: Got ${rawOrders.length} orders!`);
-          console.log(`[IQRClient]    First order: #${firstOrder.so} (${firstOrder.saledate})`);
-          console.log(`[IQRClient]    Last order: #${lastOrder.so} (${lastOrder.saledate})`);
-
-          // Add these orders - they might be the recent ones we need!
+          console.log(`[IQRClient]    First: #${firstOrder.so} (${firstOrder.saledate})`);
+          console.log(`[IQRClient]    Last: #${lastOrder.so} (${lastOrder.saledate})`);
           allOrders = allOrders.concat(rawOrders);
         } else {
-          console.log(`[IQRClient] Page ${page}: Empty or no response`);
+          console.log(`[IQRClient] Page ${page}: Empty`);
+          break; // No more pages
         }
       } catch (error: any) {
         console.log(`[IQRClient] Page ${page}: ${error.message}`);
+        if (error.message.includes('timeout')) {
+          console.log(`[IQRClient] Skipping to next page due to timeout...`);
+          continue;
+        }
+        break;
       }
     }
 
     if (allOrders.length > 0) {
       console.log(`[IQRClient] 🎉 Found ${allOrders.length} orders from high pages!`);
-    } else {
-      console.log('[IQRClient] High pages returned nothing, trying standard pagination...');
     }
 
-    // STRATEGY 2: Standard pagination for pages 0-40 (the working range)
-    console.log('[IQRClient] Fetching pages 0-40 (known working range)...');
+    // STRATEGY 3: Standard pagination for pages 0-40 (known working range)
+    console.log('[IQRClient] 🔍 STRATEGY 3: Fetching pages 0-40 (known working range)...');
 
     let page = 0;
     let hasMore = true;
