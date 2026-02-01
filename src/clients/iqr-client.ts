@@ -281,65 +281,91 @@ export class IQRClient {
    * Get Sales Orders from IQ Reseller
    * Endpoint confirmed working: GET /webapi.svc/SO/JSON/GetSOs
    *
-   * Fetches all available orders using pagination
-   * Stops when we get an empty page or hit an error
+   * Strategy:
+   * 1. Fetch pages 0-40 with size 100 (fast, ~4100 orders up to Nov 2023)
+   * 2. Then fetch pages 164-200 with size 25 (newer orders, Dec 2023 - June 2024)
+   *
+   * Note: Pages 41+ with size 100 have corrupted data ("Specified cast is not valid")
+   * but smaller page sizes work for the same data range
    */
   async getOrders(params?: {
     status?: string;
     fromDate?: string;
     toDate?: string;
   }): Promise<IQROrder[]> {
-    console.log('[IQRClient] Fetching all sales orders...');
+    console.log('[IQRClient] Fetching sales orders...');
 
     const allOrders: IQRRawOrder[] = [];
-    const pageSize = 100;
-    let page = 0;
-    let consecutiveErrors = 0;
 
-    while (consecutiveErrors < 3) {
+    // PART 1: Fetch pages 0-40 with size 100 (known working)
+    console.log('[IQRClient] Part 1: Fetching pages 0-40 (size 100)...');
+    for (let page = 0; page <= 40; page++) {
       try {
         const rawOrders = await this.request<IQRRawOrder[]>(
           '/webapi.svc/SO/JSON/GetSOs',
           {
             method: 'GET',
-            queryParams: { Page: page, PageSize: pageSize, SortBy: 0 },
+            queryParams: { Page: page, PageSize: 100, SortBy: 0 },
+          }
+        );
+
+        if (!rawOrders || rawOrders.length === 0) break;
+        allOrders.push(...rawOrders);
+
+        if (page % 20 === 0) {
+          const last = rawOrders[rawOrders.length - 1];
+          console.log(`[IQRClient] Page ${page}: ${allOrders.length} orders, last #${last.so} (${last.saledate})`);
+        }
+      } catch (error: any) {
+        console.log(`[IQRClient] Page ${page} error, stopping part 1`);
+        break;
+      }
+    }
+
+    console.log(`[IQRClient] Part 1 complete: ${allOrders.length} orders`);
+
+    // PART 2: Fetch pages 164-200 with size 25 (newer orders)
+    // Page 164 with size 25 = same starting point as page 41 with size 100
+    console.log('[IQRClient] Part 2: Fetching pages 164-200 (size 25) for newer orders...');
+    let consecutiveErrors = 0;
+
+    for (let page = 164; page <= 200 && consecutiveErrors < 5; page++) {
+      try {
+        const rawOrders = await this.request<IQRRawOrder[]>(
+          '/webapi.svc/SO/JSON/GetSOs',
+          {
+            method: 'GET',
+            queryParams: { Page: page, PageSize: 25, SortBy: 0 },
           }
         );
 
         if (!rawOrders || rawOrders.length === 0) {
-          console.log(`[IQRClient] Page ${page}: empty, stopping`);
+          console.log(`[IQRClient] Page ${page}: empty`);
           break;
         }
 
-        consecutiveErrors = 0; // Reset on success
+        consecutiveErrors = 0;
         allOrders.push(...rawOrders);
 
-        // Log progress every 10 pages
-        if (page % 10 === 0) {
-          const last = rawOrders[rawOrders.length - 1];
-          console.log(`[IQRClient] Page ${page}: ${allOrders.length} total, last #${last.so} (${last.saledate})`);
+        const last = rawOrders[rawOrders.length - 1];
+        if (page % 5 === 0 || page === 164) {
+          console.log(`[IQRClient] Page ${page}: last #${last.so} (${last.saledate})`);
         }
-
-        page++;
       } catch (error: any) {
         consecutiveErrors++;
         const errMsg = error.message || '';
-        console.log(`[IQRClient] Page ${page} error: ${errMsg.substring(0, 60)}`);
 
-        // "Object reference" error means we've gone past the end of data
+        // "Object reference" or "cast" error means end of data
         if (errMsg.includes('Object reference') || errMsg.includes('cast')) {
           console.log(`[IQRClient] Reached end of data at page ${page}`);
           break;
         }
-
-        // Try next page on other errors
-        page++;
       }
     }
 
-    console.log(`[IQRClient] Fetched ${allOrders.length} orders total`);
+    console.log(`[IQRClient] Total orders fetched: ${allOrders.length}`);
 
-    // Check for Luis's orders (for debugging)
+    // Check for Luis's orders
     const luisOrders = allOrders.filter(o => o.so === 38791 || o.so === 38792 || o.so === 38793);
     if (luisOrders.length > 0) {
       console.log(`[IQRClient] 🎉 Found Luis's orders: ${luisOrders.map(o => o.so).join(', ')}`);
