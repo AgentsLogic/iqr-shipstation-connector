@@ -282,122 +282,79 @@ export class IQRClient {
    * Endpoint confirmed working: GET /webapi.svc/SO/JSON/GetSOs
    * Returns array of orders directly (not wrapped in Data property)
    *
-   * STRATEGIES ATTEMPTED:
-   * 1. Reverse pagination (try high pages) - to skip problematic page 41
-   * 2. GetShipments with date filter (Task 4415) - to get recent orders via shipments
-   * 3. Standard pagination pages 0-40 (fallback)
+   * STRATEGY: Fetch pages 0-40 only (page 41+ causes timeout/crash)
+   * Then try alternative endpoints to find recent orders
    */
   async getOrders(params?: {
     status?: string;
     fromDate?: string;
     toDate?: string;
   }): Promise<IQROrder[]> {
-    console.log('[IQRClient] Fetching sales orders with MULTI-STRATEGY approach...');
+    console.log('[IQRClient] Fetching sales orders...');
 
     let allOrders: IQRRawOrder[] = [];
     const pageSize = 100;
 
-    // STRATEGY 1: Try GetShipments API with date filter (Task 4415 added date range support)
-    // This might give us SO numbers from recent shipments
-    console.log('[IQRClient] 🔍 STRATEGY 1: Trying GetShipments API with date range...');
+    // STRATEGY 1: Try different shipment endpoints to find recent orders
+    console.log('[IQRClient] 🔍 STRATEGY 1: Trying shipment endpoints...');
 
-    try {
-      const today = new Date();
-      const sevenDaysAgo = new Date(today);
-      sevenDaysAgo.setDate(today.getDate() - 7);
+    const shipmentEndpoints = [
+      '/webapi.svc/SalesOrder/JSON/GetShipments',
+      '/webapi.svc/SO/JSON/GetShipments',
+      '/webapi.svc/Shipment/JSON/GetShipments',
+      '/webapi.svc/Order/JSON/GetShipments',
+    ];
 
-      const fromDate = sevenDaysAgo.toISOString().split('T')[0]; // YYYY-MM-DD
-      const toDate = today.toISOString().split('T')[0];
-
-      console.log(`[IQRClient] Trying shipments from ${fromDate} to ${toDate}...`);
-
-      // Try various date parameter names that might work
-      const dateParamNames = [
-        ['ScheduledFromDate', 'ScheduledToDate'],
-        ['FromDate', 'ToDate'],
-        ['DateFrom', 'DateTo'],
-        ['ScheduleFrom', 'ScheduleTo'],
-      ];
-
-      for (const [fromKey, toKey] of dateParamNames) {
-        try {
-          const params: Record<string, string | number> = {
-            Page: 0,
-            PageSize: 100,
-            [fromKey]: fromDate,
-            [toKey]: toDate,
-          };
-          console.log(`[IQRClient] Trying GetShipments with params:`, params);
-
-          const shipments = await this.request<any[]>(
-            '/webapi.svc/Shipment/JSON/GetShipments',
-            {
-              method: 'GET',
-              queryParams: params,
-            }
-          );
-
-          if (shipments && shipments.length > 0) {
-            console.log(`[IQRClient] ✅ GetShipments returned ${shipments.length} results!`);
-            console.log(`[IQRClient] Sample shipment:`, JSON.stringify(shipments[0]).substring(0, 500));
-
-            // Extract SO numbers from shipments
-            const soNumbers = shipments.map((s: any) => s.so || s.SO || s.sonumber || s.SONumber).filter(Boolean);
-            console.log(`[IQRClient] SO numbers from shipments:`, soNumbers);
-            break; // Found working params
-          }
-        } catch (e: any) {
-          console.log(`[IQRClient] GetShipments failed: ${e.message}`);
-        }
-      }
-    } catch (error: any) {
-      console.log(`[IQRClient] GetShipments strategy failed: ${error.message}`);
-    }
-
-    // STRATEGY 2: Try high page numbers (skip problematic page 41)
-    console.log('[IQRClient] 🔍 STRATEGY 2: Trying high page numbers...');
-
-    const highPagesToTry = [42, 43, 44, 45, 46, 47, 48, 49, 50];
-
-    for (const page of highPagesToTry) {
+    for (const endpoint of shipmentEndpoints) {
       try {
-        console.log(`[IQRClient] Trying page ${page}...`);
+        console.log(`[IQRClient] Trying ${endpoint}...`);
+        const shipments = await this.request<any[]>(endpoint, {
+          method: 'GET',
+          queryParams: { Page: 0, PageSize: 10 },
+        });
 
-        const rawOrders = await this.request<IQRRawOrder[]>(
-          '/webapi.svc/SO/JSON/GetSOs',
-          {
-            method: 'GET',
-            queryParams: {
-              Page: page,
-              PageSize: pageSize,
-              SortBy: 0,
-            },
+        if (shipments && Array.isArray(shipments) && shipments.length > 0) {
+          console.log(`[IQRClient] ✅ ${endpoint} works! Got ${shipments.length} shipments`);
+          console.log(`[IQRClient] Sample:`, JSON.stringify(shipments[0]).substring(0, 300));
+
+          // Extract SO numbers
+          const soNumbers = shipments.map((s: any) => s.so || s.SO || s.soid || s.SOID).filter(Boolean);
+          if (soNumbers.length > 0) {
+            console.log(`[IQRClient] SO numbers from shipments:`, soNumbers.slice(0, 10));
           }
-        );
-
-        if (rawOrders && rawOrders.length > 0) {
-          const firstOrder = rawOrders[0];
-          const lastOrder = rawOrders[rawOrders.length - 1];
-          console.log(`[IQRClient] ✅ Page ${page}: Got ${rawOrders.length} orders!`);
-          console.log(`[IQRClient]    First: #${firstOrder.so} (${firstOrder.saledate})`);
-          console.log(`[IQRClient]    Last: #${lastOrder.so} (${lastOrder.saledate})`);
-          allOrders = allOrders.concat(rawOrders);
-        } else {
-          console.log(`[IQRClient] Page ${page}: Empty`);
-          break; // No more pages
+          break;
         }
-      } catch (error: any) {
-        console.log(`[IQRClient] Page ${page}: ${error.message}`);
-        if (error.message.includes('timeout')) {
-          console.log(`[IQRClient] Skipping to next page due to timeout...`);
-          continue;
-        }
-        break;
+      } catch (e: any) {
+        console.log(`[IQRClient] ${endpoint}: ${e.message.substring(0, 50)}`);
       }
     }
 
-    if (allOrders.length > 0) {
-      console.log(`[IQRClient] 🎉 Found ${allOrders.length} orders from high pages!`);
+    // STRATEGY 2: Try to get orders by status filter (different endpoint variations)
+    console.log('[IQRClient] 🔍 STRATEGY 2: Trying status-filtered endpoints...');
+
+    const statusEndpoints = [
+      { path: '/webapi.svc/SO/JSON/GetOpenSOs', name: 'GetOpenSOs' },
+      { path: '/webapi.svc/SO/JSON/GetSaleOrders', name: 'GetSaleOrders' },
+      { path: '/webapi.svc/SalesOrder/JSON/GetSOs', name: 'SalesOrder/GetSOs' },
+    ];
+
+    for (const { path, name } of statusEndpoints) {
+      try {
+        console.log(`[IQRClient] Trying ${name}...`);
+        const orders = await this.request<any[]>(path, {
+          method: 'GET',
+          queryParams: { Page: 0, PageSize: 10 },
+        });
+
+        if (orders && Array.isArray(orders) && orders.length > 0) {
+          console.log(`[IQRClient] ✅ ${name} works! Got ${orders.length} orders`);
+          const sample = orders[0];
+          console.log(`[IQRClient] Sample order: #${sample.so} status=${sample.status} date=${sample.saledate}`);
+          break;
+        }
+      } catch (e: any) {
+        console.log(`[IQRClient] ${name}: ${e.message.substring(0, 50)}`);
+      }
     }
 
     // STRATEGY 3: Standard pagination for pages 0-40 (known working range)
