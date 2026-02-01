@@ -281,72 +281,76 @@ export class IQRClient {
    * Get Sales Orders from IQ Reseller
    * Endpoint confirmed working: GET /webapi.svc/SO/JSON/GetSOs
    * Returns array of orders directly (not wrapped in Data property)
+   *
+   * STRATEGY: Reverse pagination - start from high page numbers to find recent orders
+   * The IQR API returns orders oldest-first, and page 41+ times out due to data issues.
+   * So we try fetching from END first (e.g., page 50, 60, 70) to find where orders exist.
    */
   async getOrders(params?: {
     status?: string;
     fromDate?: string;
     toDate?: string;
   }): Promise<IQROrder[]> {
-    console.log('[IQRClient] Fetching sales orders with pagination...');
+    console.log('[IQRClient] Fetching sales orders with REVERSE pagination strategy...');
 
     let allOrders: IQRRawOrder[] = [];
+    const pageSize = 100;
 
-    // STRATEGY: Try to fetch specific recent order numbers directly
-    // Luis's orders are #38791, #38792, #38793 - let's try fetching by order number
-    const recentOrderNumbers = [38793, 38792, 38791, 38790, 38789, 38788, 38787, 38786, 38785];
+    // STRATEGY 1: Try high page numbers first to find the END of the list
+    // Pages 0-40 have ~4100 orders from 2014-2023. Luis's 2026 orders should be on later pages.
+    // We'll try pages beyond 41 to see if they work (the timeout might be specific to page 41)
 
-    console.log('[IQRClient] Trying to fetch specific orders by number...');
+    console.log('[IQRClient] 🔍 REVERSE STRATEGY: Trying to find recent orders on higher pages...');
 
-    for (const orderNum of recentOrderNumbers) {
+    // Try pages 42-50 first (skip the problematic page 41)
+    const highPagesToTry = [42, 43, 44, 45, 50, 55, 60, 70, 80, 100];
+
+    for (const page of highPagesToTry) {
       try {
-        console.log(`[IQRClient] Trying to fetch order #${orderNum}...`);
+        console.log(`[IQRClient] Trying page ${page}...`);
 
-        // Try GetSO endpoint with order number
-        const rawOrder = await this.request<IQRRawOrder>(
-          `/webapi.svc/SO/JSON/GetSO/${orderNum}`,
+        const rawOrders = await this.request<IQRRawOrder[]>(
+          '/webapi.svc/SO/JSON/GetSOs',
           {
             method: 'GET',
+            queryParams: {
+              Page: page,
+              PageSize: pageSize,
+              SortBy: 0,
+            },
           }
         );
 
-        if (rawOrder) {
-          console.log(`[IQRClient] Successfully fetched order #${orderNum}`);
-          allOrders.push(rawOrder);
+        if (rawOrders && rawOrders.length > 0) {
+          const firstOrder = rawOrders[0];
+          const lastOrder = rawOrders[rawOrders.length - 1];
+          console.log(`[IQRClient] ✅ Page ${page}: Got ${rawOrders.length} orders!`);
+          console.log(`[IQRClient]    First order: #${firstOrder.so} (${firstOrder.saledate})`);
+          console.log(`[IQRClient]    Last order: #${lastOrder.so} (${lastOrder.saledate})`);
+
+          // Add these orders - they might be the recent ones we need!
+          allOrders = allOrders.concat(rawOrders);
+        } else {
+          console.log(`[IQRClient] Page ${page}: Empty or no response`);
         }
-      } catch (error) {
-        console.log(`[IQRClient] Could not fetch order #${orderNum}: ${error}`);
-        // Try alternative endpoint format
-        try {
-          const rawOrder = await this.request<IQRRawOrder>(
-            '/webapi.svc/SO/JSON/GetSO',
-            {
-              method: 'GET',
-              queryParams: { SO: orderNum },
-            }
-          );
-          if (rawOrder) {
-            console.log(`[IQRClient] Successfully fetched order #${orderNum} via query param`);
-            allOrders.push(rawOrder);
-          }
-        } catch (error2) {
-          console.log(`[IQRClient] Alternative also failed for #${orderNum}: ${error2}`);
-        }
+      } catch (error: any) {
+        console.log(`[IQRClient] Page ${page}: ${error.message}`);
       }
     }
 
-    // If direct fetch worked, skip pagination
     if (allOrders.length > 0) {
-      console.log(`[IQRClient] Direct fetch got ${allOrders.length} orders, skipping pagination`);
+      console.log(`[IQRClient] 🎉 Found ${allOrders.length} orders from high pages!`);
     } else {
-      // Fall back to pagination if direct fetch didn't work
-      console.log('[IQRClient] Direct fetch failed, falling back to pagination...');
+      console.log('[IQRClient] High pages returned nothing, trying standard pagination...');
+    }
 
-      let page = 0;
-      let hasMore = true;
-      const pageSize = 100;
-      let pagesProcessed = 0;
-      // Now safe to fetch beyond page 40 - we have request timeout protection
-      const maxPages = 100; // Allow up to 100 pages (10,000 orders)
+    // STRATEGY 2: Standard pagination for pages 0-40 (the working range)
+    console.log('[IQRClient] Fetching pages 0-40 (known working range)...');
+
+    let page = 0;
+    let hasMore = true;
+    let pagesProcessed = 0;
+    const maxPages = 41; // Stop before page 41 which times out
 
     while (hasMore && pagesProcessed < maxPages) {
       console.log(`[IQRClient] Fetching page ${page}...`);
@@ -397,9 +401,8 @@ export class IQRClient {
     }
 
     if (pagesProcessed >= maxPages) {
-      console.warn(`[IQRClient] ⚠️  Reached maximum page limit (${maxPages} pages, ${allOrders.length} orders fetched)`);
+      console.warn(`[IQRClient] ⚠️  Stopped at page ${maxPages} to avoid timeout issue`);
     }
-    } // Close the else block for fallback pagination
 
     console.log('[IQRClient] Total orders received:', allOrders.length);
 
