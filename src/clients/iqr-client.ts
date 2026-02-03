@@ -309,12 +309,11 @@ export class IQRClient {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      // Retry logic for failed pages
-      let retries = 0;
-      const maxRetries = 3;
+      // Try to fetch the page (with one retry for transient errors)
       let success = false;
+      let retryCount = 0;
 
-      while (retries < maxRetries && !success) {
+      while (!success && retryCount < 2) {
         try {
           const rawOrders = await this.request<IQRRawOrder[]>(
             '/webapi.svc/SO/JSON/GetSOs',
@@ -329,8 +328,7 @@ export class IQRClient {
             if (page % 100 === 0) {
               console.log(`[IQRClient] Page ${page}: empty (${consecutiveEmptyPages} consecutive empty)`);
             }
-            success = true; // Empty page is not an error
-            continue;
+            break; // Empty page is not an error, move to next page
           }
 
           consecutiveEmptyPages = 0; // Reset on successful fetch
@@ -345,20 +343,23 @@ export class IQRClient {
           success = true;
 
         } catch (error: any) {
-          retries++;
           const errMsg = error.message || '';
 
-          if (retries < maxRetries) {
-            // Wait before retrying (exponential backoff: 1s, 2s, 4s)
-            const waitTime = Math.pow(2, retries) * 1000;
-            console.log(`[IQRClient] Page ${page} error (retry ${retries}/${maxRetries} in ${waitTime}ms): ${errMsg.substring(0, 50)}...`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-          } else {
-            // Max retries reached, skip this page
-            if (page % 100 === 0 || page < 50) {
-              console.log(`[IQRClient] Page ${page} FAILED after ${maxRetries} retries, skipping: ${errMsg.substring(0, 50)}...`);
+          // Check if it's a "cast" error - these are known bad pages, skip immediately
+          if (errMsg.includes('cast is not valid') || errMsg.includes('Object reference')) {
+            if (page % 50 === 0 || page < 100) {
+              console.log(`[IQRClient] Page ${page} has corrupted data (skipping): ${errMsg.substring(0, 40)}...`);
             }
-            // Don't count errors as empty pages - just skip them
+            break; // Skip this page immediately, don't retry
+          }
+
+          // For other errors, retry once
+          retryCount++;
+          if (retryCount < 2) {
+            console.log(`[IQRClient] Page ${page} error (retry ${retryCount}/1): ${errMsg.substring(0, 50)}...`);
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
+          } else {
+            console.log(`[IQRClient] Page ${page} FAILED after retry, skipping: ${errMsg.substring(0, 50)}...`);
           }
         }
       }
