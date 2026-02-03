@@ -300,6 +300,14 @@ export class IQRClient {
     let high = 500; // Start with assumption of max 500 pages
     let lastValidPage = 0;
 
+    // Helper to check if error means "page doesn't exist"
+    const isPageNotFoundError = (error: any): boolean => {
+      const msg = error.message || '';
+      return msg.includes('no SO for the given Page') ||
+             msg.includes('404') ||
+             msg.includes('Not Found');
+    };
+
     // First, find an upper bound that returns "no SO"
     while (true) {
       try {
@@ -317,13 +325,15 @@ export class IQRClient {
             break;
           }
         } else {
+          console.log(`[IQRClient] Page ${high} is empty`);
           break; // Found empty page
         }
       } catch (error: any) {
-        if (error.message?.includes('no SO for the given Page')) {
+        if (isPageNotFoundError(error)) {
           console.log(`[IQRClient] Page ${high} doesn't exist, binary searching between ${low} and ${high}...`);
           break;
         }
+        console.log(`[IQRClient] Unexpected error testing page ${high}: ${error.message}`);
         throw error;
       }
       await new Promise(resolve => setTimeout(resolve, 200));
@@ -339,15 +349,19 @@ export class IQRClient {
           { method: 'GET', queryParams: { Page: mid, PageSize: 25, SortBy: 0 } }
         );
         if (testOrders && testOrders.length > 0) {
+          console.log(`[IQRClient] Page ${mid} has data`);
           low = mid;
           lastValidPage = mid;
         } else {
+          console.log(`[IQRClient] Page ${mid} is empty`);
           high = mid;
         }
       } catch (error: any) {
-        if (error.message?.includes('no SO for the given Page')) {
+        if (isPageNotFoundError(error)) {
+          console.log(`[IQRClient] Page ${mid} doesn't exist`);
           high = mid;
         } else {
+          console.log(`[IQRClient] Unexpected error testing page ${mid}: ${error.message}`);
           throw error;
         }
       }
