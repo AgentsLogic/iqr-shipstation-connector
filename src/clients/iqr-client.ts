@@ -281,25 +281,22 @@ export class IQRClient {
    * Get Sales Orders from IQ Reseller
    * Endpoint confirmed working: GET /webapi.svc/SO/JSON/GetSOs
    *
-   * NEW STRATEGY: Start from high page numbers and work backwards to find recent orders faster
-   * Since we only need last 24 hours, we start from page 2000 and go backwards
+   * Strategy: Fetch all pages from 0 to 3000 to get complete order history
    */
   async getOrders(params?: {
     status?: string;
     fromDate?: string;
     toDate?: string;
   }): Promise<IQROrder[]> {
-    console.log('[IQRClient] Fetching sales orders (starting from recent orders)...');
+    console.log('[IQRClient] Fetching sales orders from page 0 to 3000...');
 
     const allOrders: IQRRawOrder[] = [];
     let consecutiveErrors = 0;
-    let foundRecentOrders = false;
 
-    // Start from page 300 (where we know data exists - Dec 2020) and work forward
-    // We know page 300 = Dec 2020, so we need to go much higher to reach Feb 2026
-    console.log('[IQRClient] Fetching orders starting from page 300...');
+    // Fetch all pages from 0 to 3000
+    console.log('[IQRClient] Starting comprehensive fetch from page 0...');
 
-    for (let page = 300; page <= 3000 && consecutiveErrors < 5; page++) {
+    for (let page = 0; page <= 3000 && consecutiveErrors < 5; page++) {
       try {
         const rawOrders = await this.request<IQRRawOrder[]>(
           '/webapi.svc/SO/JSON/GetSOs',
@@ -318,22 +315,12 @@ export class IQRClient {
         }
 
         consecutiveErrors = 0;
-        foundRecentOrders = true;
         allOrders.push(...rawOrders);
 
         const last = rawOrders[rawOrders.length - 1];
-        const lastDate = new Date(last.saledate);
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        if (page % 50 === 0 || page === 2000) {
-          console.log(`[IQRClient] Page ${page}: last #${last.so} (${last.saledate})`);
-        }
-
-        // If we found orders older than 30 days, we can stop
-        if (lastDate < thirtyDaysAgo) {
-          console.log(`[IQRClient] Reached orders older than 30 days at page ${page}, stopping`);
-          break;
+        if (page % 100 === 0 || page === 0) {
+          console.log(`[IQRClient] Page ${page}: ${allOrders.length} total orders, last #${last.so} (${last.saledate})`);
         }
 
       } catch (error: any) {
@@ -342,11 +329,6 @@ export class IQRClient {
 
         if (page % 100 === 0) {
           console.log(`[IQRClient] Page ${page} error: ${errMsg.substring(0, 50)}...`);
-        }
-
-        // If we haven't found any orders yet and hit errors, keep trying
-        if (!foundRecentOrders && consecutiveErrors < 5) {
-          continue;
         }
 
         // "Object reference" or "cast" error might mean we're past the end
