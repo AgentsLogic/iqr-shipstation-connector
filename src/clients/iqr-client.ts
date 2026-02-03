@@ -304,43 +304,63 @@ export class IQRClient {
         await this.authenticate();
       }
 
-      try {
-        const rawOrders = await this.request<IQRRawOrder[]>(
-          '/webapi.svc/SO/JSON/GetSOs',
-          {
-            method: 'GET',
-            queryParams: { Page: page, PageSize: 25, SortBy: 0 },
+      // Add small delay to avoid rate limiting (100ms between requests)
+      if (page > 0) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      // Retry logic for failed pages
+      let retries = 0;
+      const maxRetries = 3;
+      let success = false;
+
+      while (retries < maxRetries && !success) {
+        try {
+          const rawOrders = await this.request<IQRRawOrder[]>(
+            '/webapi.svc/SO/JSON/GetSOs',
+            {
+              method: 'GET',
+              queryParams: { Page: page, PageSize: 25, SortBy: 0 },
+            }
+          );
+
+          if (!rawOrders || rawOrders.length === 0) {
+            consecutiveEmptyPages++;
+            if (page % 100 === 0) {
+              console.log(`[IQRClient] Page ${page}: empty (${consecutiveEmptyPages} consecutive empty)`);
+            }
+            success = true; // Empty page is not an error
+            continue;
           }
-        );
 
-        if (!rawOrders || rawOrders.length === 0) {
-          consecutiveEmptyPages++;
-          if (page % 100 === 0) {
-            console.log(`[IQRClient] Page ${page}: empty (${consecutiveEmptyPages} consecutive empty)`);
+          consecutiveEmptyPages = 0; // Reset on successful fetch
+          allOrders.push(...rawOrders);
+
+          const last = rawOrders[rawOrders.length - 1];
+
+          if (page % 100 === 0 || page === 0) {
+            console.log(`[IQRClient] Page ${page}: ${allOrders.length} total orders, last #${last.so} (${last.saledate})`);
           }
-          continue;
+
+          success = true;
+
+        } catch (error: any) {
+          retries++;
+          const errMsg = error.message || '';
+
+          if (retries < maxRetries) {
+            // Wait before retrying (exponential backoff: 1s, 2s, 4s)
+            const waitTime = Math.pow(2, retries) * 1000;
+            console.log(`[IQRClient] Page ${page} error (retry ${retries}/${maxRetries} in ${waitTime}ms): ${errMsg.substring(0, 50)}...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+          } else {
+            // Max retries reached, skip this page
+            if (page % 100 === 0 || page < 50) {
+              console.log(`[IQRClient] Page ${page} FAILED after ${maxRetries} retries, skipping: ${errMsg.substring(0, 50)}...`);
+            }
+            // Don't count errors as empty pages - just skip them
+          }
         }
-
-        consecutiveEmptyPages = 0; // Reset on successful fetch
-        allOrders.push(...rawOrders);
-
-        const last = rawOrders[rawOrders.length - 1];
-
-        if (page % 100 === 0 || page === 0) {
-          console.log(`[IQRClient] Page ${page}: ${allOrders.length} total orders, last #${last.so} (${last.saledate})`);
-        }
-
-      } catch (error: any) {
-        const errMsg = error.message || '';
-
-        // Skip error pages (known issue with IQR API on certain pages)
-        // Just log and continue to next page
-        if (page % 100 === 0 || page < 50) {
-          console.log(`[IQRClient] Page ${page} error (skipping): ${errMsg.substring(0, 50)}...`);
-        }
-
-        // Don't count errors as empty pages - just skip them
-        continue;
       }
     }
 
