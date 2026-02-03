@@ -293,128 +293,61 @@ export class IQRClient {
     this.sessionToken = null;
     await this.authenticate();
 
-    // STEP 1: Binary search to find the last page with data
-    console.log('[IQRClient] Finding the last page with orders (binary search)...');
+    // PageSize=30 with SLOW rate limiting (500ms between requests)
+    // Fetch ALL pages from 0 until we hit empty pages
+    const PAGE_SIZE = 30;
+    const DELAY_MS = 500; // 500ms between each request (slower)
+    const MAX_PAGES = 2000;
 
-    let low = 0;
-    let high = 500; // Start with assumption of max 500 pages
-    let lastValidPage = 0;
-
-    // Helper to check if error means "page doesn't exist"
-    const isPageNotFoundError = (error: any): boolean => {
-      const msg = error.message || '';
-      return msg.includes('no SO for the given Page') ||
-             msg.includes('404') ||
-             msg.includes('Not Found');
-    };
-
-    // First, find an upper bound that returns "no SO"
-    while (true) {
-      try {
-        console.log(`[IQRClient] Testing page ${high}...`);
-        const testOrders = await this.request<IQRRawOrder[]>(
-          '/webapi.svc/SO/JSON/GetSOs',
-          { method: 'GET', queryParams: { Page: high, PageSize: 25, SortBy: 0 } }
-        );
-        if (testOrders && testOrders.length > 0) {
-          console.log(`[IQRClient] Page ${high} has data, doubling...`);
-          low = high;
-          high = high * 2;
-          if (high > 2000) {
-            console.log(`[IQRClient] Reached max search limit at page ${high}`);
-            break;
-          }
-        } else {
-          console.log(`[IQRClient] Page ${high} is empty`);
-          break; // Found empty page
-        }
-      } catch (error: any) {
-        if (isPageNotFoundError(error)) {
-          console.log(`[IQRClient] Page ${high} doesn't exist, binary searching between ${low} and ${high}...`);
-          break;
-        }
-        console.log(`[IQRClient] Unexpected error testing page ${high}: ${error.message}`);
-        throw error;
-      }
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
-
-    // Binary search between low and high
-    while (low < high - 1) {
-      const mid = Math.floor((low + high) / 2);
-      try {
-        console.log(`[IQRClient] Binary search: testing page ${mid}...`);
-        const testOrders = await this.request<IQRRawOrder[]>(
-          '/webapi.svc/SO/JSON/GetSOs',
-          { method: 'GET', queryParams: { Page: mid, PageSize: 25, SortBy: 0 } }
-        );
-        if (testOrders && testOrders.length > 0) {
-          console.log(`[IQRClient] Page ${mid} has data`);
-          low = mid;
-          lastValidPage = mid;
-        } else {
-          console.log(`[IQRClient] Page ${mid} is empty`);
-          high = mid;
-        }
-      } catch (error: any) {
-        if (isPageNotFoundError(error)) {
-          console.log(`[IQRClient] Page ${mid} doesn't exist`);
-          high = mid;
-        } else {
-          console.log(`[IQRClient] Unexpected error testing page ${mid}: ${error.message}`);
-          throw error;
-        }
-      }
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
-
-    lastValidPage = low;
-    console.log(`[IQRClient] ✅ Found last valid page: ${lastValidPage}`);
-
-    // STEP 2: Fetch the last 50 pages (most recent ~1250 orders)
-    const START_PAGE = Math.max(0, lastValidPage - 50);
-    const END_PAGE = lastValidPage + 5; // A little buffer
-
-    console.log(`[IQRClient] Fetching RECENT orders: pages ${START_PAGE} to ${END_PAGE}`);
+    console.log(`[IQRClient] Fetching ALL orders: PageSize=${PAGE_SIZE}, delay=${DELAY_MS}ms between requests`);
+    console.log(`[IQRClient] This will be slow but thorough...`);
 
     const allOrders: IQRRawOrder[] = [];
     let consecutiveEmptyPages = 0;
+    let consecutiveErrors = 0;
 
-    for (let page = START_PAGE; page <= END_PAGE && consecutiveEmptyPages < 10; page++) {
+    for (let page = 0; page <= MAX_PAGES && consecutiveEmptyPages < 20 && consecutiveErrors < 10; page++) {
 
-      // Add small delay to avoid rate limiting (100ms between requests)
-      if (page > START_PAGE) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+      // SLOW rate limiting - 500ms between each request
+      if (page > 0) {
+        await new Promise(resolve => setTimeout(resolve, DELAY_MS));
       }
 
-      // Try to fetch the page (with one retry for transient errors)
+      // Extra pause every 100 pages (5 seconds)
+      if (page > 0 && page % 100 === 0) {
+        console.log(`[IQRClient] Page ${page}: Taking 5 second break...`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+
+      // Try to fetch the page with retries and longer waits on error
       let success = false;
       let retryCount = 0;
 
-      while (!success && retryCount < 2) {
+      while (!success && retryCount < 3) {
         try {
           const rawOrders = await this.request<IQRRawOrder[]>(
             '/webapi.svc/SO/JSON/GetSOs',
             {
               method: 'GET',
-              queryParams: { Page: page, PageSize: 25, SortBy: 0 },
+              queryParams: { Page: page, PageSize: PAGE_SIZE, SortBy: 0 },
             }
           );
 
           if (!rawOrders || rawOrders.length === 0) {
             consecutiveEmptyPages++;
-            if (page % 100 === 0) {
-              console.log(`[IQRClient] Page ${page}: empty (${consecutiveEmptyPages} consecutive empty)`);
-            }
-            break; // Empty page is not an error, move to next page
+            console.log(`[IQRClient] Page ${page}: empty (${consecutiveEmptyPages} consecutive empty)`);
+            success = true; // Empty page is not an error
+            break;
           }
 
-          consecutiveEmptyPages = 0; // Reset on successful fetch
+          consecutiveEmptyPages = 0;
+          consecutiveErrors = 0;
           allOrders.push(...rawOrders);
 
           const last = rawOrders[rawOrders.length - 1];
 
-          if (page % 10 === 0 || page === START_PAGE) {
+          // Log every 50 pages or first page
+          if (page % 50 === 0 || page === 0) {
             console.log(`[IQRClient] Page ${page}: ${allOrders.length} total orders, last #${last.so} (${last.saledate})`);
           }
 
@@ -422,24 +355,21 @@ export class IQRClient {
 
         } catch (error: any) {
           const errMsg = error.message || '';
-
-          // Check if it's a "cast" error - these are known bad pages, skip immediately
-          if (errMsg.includes('cast is not valid') || errMsg.includes('Object reference')) {
-            if (page % 50 === 0 || page < 100) {
-              console.log(`[IQRClient] Page ${page} has corrupted data (skipping): ${errMsg.substring(0, 40)}...`);
-            }
-            break; // Skip this page immediately, don't retry
-          }
-
-          // For other errors, retry once
           retryCount++;
-          if (retryCount < 2) {
-            console.log(`[IQRClient] Page ${page} error (retry ${retryCount}/1): ${errMsg.substring(0, 50)}...`);
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
-          } else {
-            console.log(`[IQRClient] Page ${page} FAILED after retry, skipping: ${errMsg.substring(0, 50)}...`);
-          }
+          consecutiveErrors++;
+
+          console.log(`[IQRClient] Page ${page} error (attempt ${retryCount}/3): ${errMsg.substring(0, 50)}...`);
+
+          // Wait longer before retry (2 seconds, then 5 seconds, then 10 seconds)
+          const waitTime = retryCount * 2500;
+          console.log(`[IQRClient] Waiting ${waitTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
         }
+      }
+
+      // If we failed all retries, log it
+      if (!success && retryCount >= 3) {
+        console.log(`[IQRClient] Page ${page} FAILED after 3 attempts, continuing...`);
       }
     }
 
