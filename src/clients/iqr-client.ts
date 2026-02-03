@@ -295,11 +295,11 @@ export class IQRClient {
     let consecutiveErrors = 0;
     let foundRecentOrders = false;
 
-    // Start from page 2000 and work backwards to find recent orders
-    // Stop when we hit 5 consecutive errors or find orders older than 30 days
-    console.log('[IQRClient] Searching for recent orders (starting from page 2000, going backwards)...');
+    // Start from page 300 (where we know data exists - Dec 2020) and work forward
+    // We know page 300 = Dec 2020, so we need to go much higher to reach Feb 2026
+    console.log('[IQRClient] Fetching orders starting from page 300...');
 
-    for (let page = 2000; page >= 0 && consecutiveErrors < 5; page--) {
+    for (let page = 300; page <= 3000 && consecutiveErrors < 5; page++) {
       try {
         const rawOrders = await this.request<IQRRawOrder[]>(
           '/webapi.svc/SO/JSON/GetSOs',
