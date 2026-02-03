@@ -450,20 +450,28 @@ export class IQRClient {
 
   /**
    * Filter orders by agent channel
-   * Agent orders are identified by userdefined1 = "AGENT"
+   * Searches userdefined1-5 fields for the channel name (e.g., "DPC - QUIC")
    */
   filterByAgentChannel(orders: IQROrder[], channelName: string): IQROrder[] {
-    console.log(`[IQRClient] Filtering by agent channel: "${channelName}" in userdefined1 field`);
+    console.log(`[IQRClient] Filtering by agent channel: "${channelName}" in userdefined1-5 fields`);
 
     return orders.filter(order => {
       const raw = order.raw;
-      const userdefined1Value = raw.userdefined1?.toUpperCase() || '';
       const searchValue = channelName.toUpperCase();
 
-      const isMatch = userdefined1Value === searchValue;
+      // Search all userdefined fields (1-5)
+      const fields = [
+        raw.userdefined1?.trim().toUpperCase() || '',
+        raw.userdefined2?.trim().toUpperCase() || '',
+        raw.userdefined3?.trim().toUpperCase() || '',
+        raw.userdefined4?.trim().toUpperCase() || '',
+        raw.userdefined5?.trim().toUpperCase() || '',
+      ];
+
+      const isMatch = fields.some(field => field === searchValue);
 
       if (isMatch) {
-        console.log(`[IQRClient] ✓ Order ${order.orderNumber} matches: userdefined1="${raw.userdefined1}"`);
+        console.log(`[IQRClient] ✓ Order ${order.orderNumber} matches: found "${channelName}" in userdefined fields`);
       }
 
       return isMatch;
@@ -480,7 +488,7 @@ export class IQRClient {
     agentChannel?: string;
   }): Promise<IQROrder[]> {
     const statuses = options?.statuses || ['Open', 'Partial'];
-    const daysBack = options?.daysBack || 30;
+    const daysBack = options?.daysBack || 1; // Default to last 24 hours
     const agentChannel = options?.agentChannel;
 
     console.log('[IQRClient] Fetching orders to sync with filters:', {

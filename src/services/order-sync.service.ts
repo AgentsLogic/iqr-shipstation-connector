@@ -125,9 +125,9 @@ export async function syncOrders(options?: {
     // Fetch orders from IQ Reseller with filters
     performanceMonitor.start('fetch-orders');
     const orders = await iqrClient.getOrdersToSync({
-      statuses: options?.orderStatus ? [options.orderStatus] : ['Open'],
-      daysBack: 2, // Last 2 days
-      agentChannel: 'AGENT', // Filter for Store front = AGENT
+      statuses: options?.orderStatus ? [options.orderStatus] : ['Open', 'Partial'],
+      daysBack: 1, // Last 24 hours (1 day)
+      // agentChannel: 'DPC - Agent Quickbooks', // Optional: Uncomment to filter by specific channel
     });
     performanceMonitor.end('fetch-orders', { count: orders.length });
 
