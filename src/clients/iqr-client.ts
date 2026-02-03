@@ -291,12 +291,12 @@ export class IQRClient {
     console.log('[IQRClient] Fetching sales orders from page 0 to 3000...');
 
     const allOrders: IQRRawOrder[] = [];
-    let consecutiveErrors = 0;
+    let consecutiveEmptyPages = 0;
 
     // Fetch all pages from 0 to 3000
     console.log('[IQRClient] Starting comprehensive fetch from page 0...');
 
-    for (let page = 0; page <= 3000 && consecutiveErrors < 5; page++) {
+    for (let page = 0; page <= 3000 && consecutiveEmptyPages < 50; page++) {
       try {
         const rawOrders = await this.request<IQRRawOrder[]>(
           '/webapi.svc/SO/JSON/GetSOs',
@@ -307,14 +307,14 @@ export class IQRClient {
         );
 
         if (!rawOrders || rawOrders.length === 0) {
-          consecutiveErrors++;
+          consecutiveEmptyPages++;
           if (page % 100 === 0) {
-            console.log(`[IQRClient] Page ${page}: empty (${consecutiveErrors} consecutive errors)`);
+            console.log(`[IQRClient] Page ${page}: empty (${consecutiveEmptyPages} consecutive empty)`);
           }
           continue;
         }
 
-        consecutiveErrors = 0;
+        consecutiveEmptyPages = 0; // Reset on successful fetch
         allOrders.push(...rawOrders);
 
         const last = rawOrders[rawOrders.length - 1];
@@ -324,18 +324,16 @@ export class IQRClient {
         }
 
       } catch (error: any) {
-        consecutiveErrors++;
         const errMsg = error.message || '';
 
-        if (page % 100 === 0) {
-          console.log(`[IQRClient] Page ${page} error: ${errMsg.substring(0, 50)}...`);
+        // Skip error pages (known issue with IQR API on certain pages)
+        // Just log and continue to next page
+        if (page % 100 === 0 || page < 50) {
+          console.log(`[IQRClient] Page ${page} error (skipping): ${errMsg.substring(0, 50)}...`);
         }
 
-        // "Object reference" or "cast" error might mean we're past the end
-        if (errMsg.includes('Object reference') || errMsg.includes('cast')) {
-          console.log(`[IQRClient] Reached end of data at page ${page}`);
-          break;
-        }
+        // Don't count errors as empty pages - just skip them
+        continue;
       }
     }
 
