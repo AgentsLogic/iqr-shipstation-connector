@@ -293,14 +293,15 @@ export class IQRClient {
     this.sessionToken = null;
     await this.authenticate();
 
-    // PageSize=30 with SLOW rate limiting (500ms between requests)
-    // Fetch ALL pages from 0 until we hit empty pages
+    // TRY SortBy=1 - maybe this sorts NEWEST first!
+    // If newest first, we only need the first few pages to get recent orders
     const PAGE_SIZE = 30;
-    const DELAY_MS = 500; // 500ms between each request (slower)
-    const MAX_PAGES = 2000;
+    const SORT_BY = 1; // Try 1 instead of 0 - might be newest first!
+    const DELAY_MS = 500;
+    const MAX_PAGES = 100; // Only need first 100 pages if sorted newest first
 
-    console.log(`[IQRClient] Fetching ALL orders: PageSize=${PAGE_SIZE}, delay=${DELAY_MS}ms between requests`);
-    console.log(`[IQRClient] This will be slow but thorough...`);
+    console.log(`[IQRClient] Trying SortBy=${SORT_BY} (hoping for newest-first ordering)`);
+    console.log(`[IQRClient] PageSize=${PAGE_SIZE}, delay=${DELAY_MS}ms, max ${MAX_PAGES} pages`);
 
     const allOrders: IQRRawOrder[] = [];
     let consecutiveEmptyPages = 0;
@@ -329,7 +330,7 @@ export class IQRClient {
             '/webapi.svc/SO/JSON/GetSOs',
             {
               method: 'GET',
-              queryParams: { Page: page, PageSize: PAGE_SIZE, SortBy: 0 },
+              queryParams: { Page: page, PageSize: PAGE_SIZE, SortBy: SORT_BY },
             }
           );
 
