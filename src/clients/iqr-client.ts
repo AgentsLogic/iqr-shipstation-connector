@@ -293,35 +293,25 @@ export class IQRClient {
     this.sessionToken = null;
     await this.authenticate();
 
-    console.log('[IQRClient] Fetching sales orders from page 0 to 3000...');
+    // OPTIMIZATION: Start from page 1500 instead of 0
+    // Luis's test orders are #38791-38793, which at PageSize=25 would be around page 1551
+    // We start at 1500 to get some buffer for recent orders (last ~50 pages = ~1250 orders)
+    const START_PAGE = 1500;
+    const END_PAGE = 1600; // Only fetch 100 pages (~2500 orders)
+
+    console.log(`[IQRClient] Fetching RECENT orders only: pages ${START_PAGE} to ${END_PAGE} (skipping old orders)`);
 
     const allOrders: IQRRawOrder[] = [];
     let consecutiveEmptyPages = 0;
 
-    // Fetch all pages from 0 to 3000 (PageSize=25)
-    // PageSize=25 is most stable - got to page 1080 before
-    // PageSize=50 fails around page 500, PageSize=100 fails immediately
-    console.log('[IQRClient] Starting comprehensive fetch from page 0 (PageSize=25 with session refresh)...');
+    // Fetch only recent pages (PageSize=25)
+    // This skips ~37,500 old orders and only fetches recent ones
+    console.log(`[IQRClient] Starting fetch from page ${START_PAGE} (PageSize=25)...`);
 
-    for (let page = 0; page <= 3000 && consecutiveEmptyPages < 50; page++) {
-      // End session and create fresh one every 1000 pages to reset API state
-      if (page > 0 && page % 1000 === 0) {
-        console.log(`[IQRClient] Page ${page}: Ending current session and creating fresh session...`);
-
-        // Properly end the current session
-        await this.endSession();
-
-        // Wait 90 seconds to give the API a break
-        console.log(`[IQRClient] Cooldown: Pausing for 90 seconds before creating new session...`);
-        await new Promise(resolve => setTimeout(resolve, 90000));
-
-        // Create fresh session
-        await this.authenticate();
-        console.log(`[IQRClient] Fresh session created, resuming fetch from page ${page}...`);
-      }
+    for (let page = START_PAGE; page <= END_PAGE && consecutiveEmptyPages < 10; page++) {
 
       // Add small delay to avoid rate limiting (100ms between requests)
-      if (page > 0) {
+      if (page > START_PAGE) {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
@@ -352,7 +342,7 @@ export class IQRClient {
 
           const last = rawOrders[rawOrders.length - 1];
 
-          if (page % 100 === 0 || page === 0) {
+          if (page % 10 === 0 || page === START_PAGE) {
             console.log(`[IQRClient] Page ${page}: ${allOrders.length} total orders, last #${last.so} (${last.saledate})`);
           }
 
