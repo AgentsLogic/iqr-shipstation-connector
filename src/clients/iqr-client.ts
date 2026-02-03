@@ -293,15 +293,21 @@ export class IQRClient {
     const allOrders: IQRRawOrder[] = [];
     let consecutiveEmptyPages = 0;
 
-    // Fetch all pages from 0 to 3000
-    console.log('[IQRClient] Starting comprehensive fetch from page 0...');
+    // Fetch all pages from 0 to 750 (using PageSize=100 instead of 25)
+    // This reduces total API calls from 3000 to 750
+    console.log('[IQRClient] Starting comprehensive fetch from page 0 (PageSize=100)...');
 
-    for (let page = 0; page <= 3000 && consecutiveEmptyPages < 50; page++) {
-      // Refresh session token every 500 pages (or if expired) to prevent timeout
+    for (let page = 0; page <= 750 && consecutiveEmptyPages < 50; page++) {
+      // Refresh session token AND cooldown every 500 pages (~5 minutes)
       if (page > 0 && page % 500 === 0) {
-        console.log(`[IQRClient] Page ${page}: Refreshing session token to prevent expiry...`);
+        console.log(`[IQRClient] Page ${page}: Refreshing session token and cooling down for 60 seconds...`);
         this.sessionToken = null; // Force re-authentication
         await this.authenticate();
+
+        // Cooldown period: wait 60 seconds to give the API a break
+        console.log(`[IQRClient] Cooldown: Pausing for 60 seconds to prevent API throttling...`);
+        await new Promise(resolve => setTimeout(resolve, 60000));
+        console.log(`[IQRClient] Cooldown complete, resuming fetch...`);
       }
 
       // Add small delay to avoid rate limiting (100ms between requests)
@@ -319,7 +325,7 @@ export class IQRClient {
             '/webapi.svc/SO/JSON/GetSOs',
             {
               method: 'GET',
-              queryParams: { Page: page, PageSize: 25, SortBy: 0 },
+              queryParams: { Page: page, PageSize: 100, SortBy: 0 },
             }
           );
 
