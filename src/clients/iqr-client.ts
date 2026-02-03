@@ -303,16 +303,17 @@ export class IQRClient {
     console.log('[IQRClient] Starting comprehensive fetch from page 0 (PageSize=25 with cooldowns)...');
 
     for (let page = 0; page <= 3000 && consecutiveEmptyPages < 50; page++) {
-      // Refresh session token AND cooldown every 500 pages (~5 minutes)
-      if (page > 0 && page % 500 === 0) {
-        console.log(`[IQRClient] Page ${page}: Refreshing session token and cooling down for 60 seconds...`);
-        this.sessionToken = null; // Force re-authentication
+      // Cooldown every 200 pages (~3-4 minutes) to prevent API throttling
+      if (page > 0 && page % 200 === 0) {
+        console.log(`[IQRClient] Page ${page}: Cooling down for 90 seconds to prevent API throttling...`);
+
+        // Refresh session token during cooldown
+        this.sessionToken = null;
         await this.authenticate();
 
-        // Cooldown period: wait 60 seconds to give the API a break
-        console.log(`[IQRClient] Cooldown: Pausing for 60 seconds to prevent API throttling...`);
-        await new Promise(resolve => setTimeout(resolve, 60000));
-        console.log(`[IQRClient] Cooldown complete, resuming fetch...`);
+        // Cooldown period: wait 90 seconds to give the API a break
+        await new Promise(resolve => setTimeout(resolve, 90000));
+        console.log(`[IQRClient] Cooldown complete, resuming fetch from page ${page}...`);
       }
 
       // Add small delay to avoid rate limiting (100ms between requests)
