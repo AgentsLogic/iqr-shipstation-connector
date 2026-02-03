@@ -281,56 +281,25 @@ export class IQRClient {
    * Get Sales Orders from IQ Reseller
    * Endpoint confirmed working: GET /webapi.svc/SO/JSON/GetSOs
    *
-   * Strategy:
-   * 1. Fetch pages 0-40 with size 100 (fast, ~4100 orders up to Nov 2023)
-   * 2. Then fetch pages 164-200 with size 25 (newer orders, Dec 2023 - June 2024)
-   *
-   * Note: Pages 41+ with size 100 have corrupted data ("Specified cast is not valid")
-   * but smaller page sizes work for the same data range
+   * NEW STRATEGY: Start from high page numbers and work backwards to find recent orders faster
+   * Since we only need last 24 hours, we start from page 2000 and go backwards
    */
   async getOrders(params?: {
     status?: string;
     fromDate?: string;
     toDate?: string;
   }): Promise<IQROrder[]> {
-    console.log('[IQRClient] Fetching sales orders...');
+    console.log('[IQRClient] Fetching sales orders (starting from recent orders)...');
 
     const allOrders: IQRRawOrder[] = [];
-
-    // PART 1: Fetch pages 0-40 with size 100 (known working)
-    console.log('[IQRClient] Part 1: Fetching pages 0-40 (size 100)...');
-    for (let page = 0; page <= 40; page++) {
-      try {
-        const rawOrders = await this.request<IQRRawOrder[]>(
-          '/webapi.svc/SO/JSON/GetSOs',
-          {
-            method: 'GET',
-            queryParams: { Page: page, PageSize: 100, SortBy: 0 },
-          }
-        );
-
-        if (!rawOrders || rawOrders.length === 0) break;
-        allOrders.push(...rawOrders);
-
-        if (page % 20 === 0) {
-          const last = rawOrders[rawOrders.length - 1];
-          console.log(`[IQRClient] Page ${page}: ${allOrders.length} orders, last #${last.so} (${last.saledate})`);
-        }
-      } catch (error: any) {
-        console.log(`[IQRClient] Page ${page} error, stopping part 1`);
-        break;
-      }
-    }
-
-    console.log(`[IQRClient] Part 1 complete: ${allOrders.length} orders`);
-
-    // PART 2: Fetch pages 164-2000 with size 25 (newer orders)
-    // Page 164 with size 25 = same starting point as page 41 with size 100
-    // Extended to page 2000 to reach Feb 2026 orders (currently at Dec 2020 on page 300)
-    console.log('[IQRClient] Part 2: Fetching pages 164-2000 (size 25) for newer orders...');
     let consecutiveErrors = 0;
+    let foundRecentOrders = false;
 
-    for (let page = 164; page <= 2000 && consecutiveErrors < 5; page++) {
+    // Start from page 2000 and work backwards to find recent orders
+    // Stop when we hit 5 consecutive errors or find orders older than 30 days
+    console.log('[IQRClient] Searching for recent orders (starting from page 2000, going backwards)...');
+
+    for (let page = 2000; page >= 0 && consecutiveErrors < 5; page--) {
       try {
         const rawOrders = await this.request<IQRRawOrder[]>(
           '/webapi.svc/SO/JSON/GetSOs',
@@ -341,22 +310,46 @@ export class IQRClient {
         );
 
         if (!rawOrders || rawOrders.length === 0) {
-          console.log(`[IQRClient] Page ${page}: empty`);
-          break;
+          consecutiveErrors++;
+          if (page % 100 === 0) {
+            console.log(`[IQRClient] Page ${page}: empty (${consecutiveErrors} consecutive errors)`);
+          }
+          continue;
         }
 
         consecutiveErrors = 0;
+        foundRecentOrders = true;
         allOrders.push(...rawOrders);
 
         const last = rawOrders[rawOrders.length - 1];
-        if (page % 5 === 0 || page === 164) {
+        const lastDate = new Date(last.saledate);
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        if (page % 50 === 0 || page === 2000) {
           console.log(`[IQRClient] Page ${page}: last #${last.so} (${last.saledate})`);
         }
+
+        // If we found orders older than 30 days, we can stop
+        if (lastDate < thirtyDaysAgo) {
+          console.log(`[IQRClient] Reached orders older than 30 days at page ${page}, stopping`);
+          break;
+        }
+
       } catch (error: any) {
         consecutiveErrors++;
         const errMsg = error.message || '';
 
-        // "Object reference" or "cast" error means end of data
+        if (page % 100 === 0) {
+          console.log(`[IQRClient] Page ${page} error: ${errMsg.substring(0, 50)}...`);
+        }
+
+        // If we haven't found any orders yet and hit errors, keep trying
+        if (!foundRecentOrders && consecutiveErrors < 5) {
+          continue;
+        }
+
+        // "Object reference" or "cast" error might mean we're past the end
         if (errMsg.includes('Object reference') || errMsg.includes('cast')) {
           console.log(`[IQRClient] Reached end of data at page ${page}`);
           break;
