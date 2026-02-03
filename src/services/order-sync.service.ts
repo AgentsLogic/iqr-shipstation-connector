@@ -127,7 +127,7 @@ export async function syncOrders(options?: {
     const orders = await iqrClient.getOrdersToSync({
       statuses: options?.orderStatus ? [options.orderStatus] : ['Open', 'Partial'],
       daysBack: 1, // Last 24 hours (1 day)
-      // agentChannel: 'DPC - Agent Quickbooks', // Optional: Uncomment to filter by specific channel
+      agentChannel: 'DPC - Agent Quickbooks', // Filter for DPC - Agent Quickbooks (ID: 388003)
     });
     performanceMonitor.end('fetch-orders', { count: orders.length });
 
