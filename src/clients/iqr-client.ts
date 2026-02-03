@@ -324,13 +324,13 @@ export class IQRClient {
 
     console.log(`[IQRClient] Part 1 complete: ${allOrders.length} orders`);
 
-    // PART 2: Fetch pages 164-300 with size 25 (newer orders)
+    // PART 2: Fetch pages 164-2000 with size 25 (newer orders)
     // Page 164 with size 25 = same starting point as page 41 with size 100
-    // Extended to page 300 to try to find Jan 2026 orders
-    console.log('[IQRClient] Part 2: Fetching pages 164-300 (size 25) for newer orders...');
+    // Extended to page 2000 to reach Feb 2026 orders (currently at Dec 2020 on page 300)
+    console.log('[IQRClient] Part 2: Fetching pages 164-2000 (size 25) for newer orders...');
     let consecutiveErrors = 0;
 
-    for (let page = 164; page <= 300 && consecutiveErrors < 5; page++) {
+    for (let page = 164; page <= 2000 && consecutiveErrors < 5; page++) {
       try {
         const rawOrders = await this.request<IQRRawOrder[]>(
           '/webapi.svc/SO/JSON/GetSOs',
