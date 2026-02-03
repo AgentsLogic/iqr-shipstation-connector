@@ -140,7 +140,7 @@ export class IQRClient {
         this.sessionToken = data.Data;
         // Set expiry to 55 minutes (assuming 60 min session timeout)
         this.sessionExpiry = Date.now() + (55 * 60 * 1000);
-        console.log('[IQRClient] Successfully authenticated, session token cached');
+        console.log(`[IQRClient] Successfully authenticated, session token: ${this.sessionToken?.substring(0, 10)}... (expires in 55 min)`);
       } finally {
         this.authPromise = null;
       }
@@ -288,6 +288,11 @@ export class IQRClient {
     fromDate?: string;
     toDate?: string;
   }): Promise<IQROrder[]> {
+    // Force fresh authentication at the start of each fetch
+    console.log('[IQRClient] Forcing fresh authentication for new fetch...');
+    this.sessionToken = null;
+    await this.authenticate();
+
     console.log('[IQRClient] Fetching sales orders from page 0 to 3000...');
 
     const allOrders: IQRRawOrder[] = [];
