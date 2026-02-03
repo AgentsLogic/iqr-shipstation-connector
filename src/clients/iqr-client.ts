@@ -293,20 +293,78 @@ export class IQRClient {
     this.sessionToken = null;
     await this.authenticate();
 
-    // OPTIMIZATION: Start from page 1500 instead of 0
-    // Luis's test orders are #38791-38793, which at PageSize=25 would be around page 1551
-    // We start at 1500 to get some buffer for recent orders (last ~50 pages = ~1250 orders)
-    const START_PAGE = 1500;
-    const END_PAGE = 1600; // Only fetch 100 pages (~2500 orders)
+    // STEP 1: Binary search to find the last page with data
+    console.log('[IQRClient] Finding the last page with orders (binary search)...');
 
-    console.log(`[IQRClient] Fetching RECENT orders only: pages ${START_PAGE} to ${END_PAGE} (skipping old orders)`);
+    let low = 0;
+    let high = 500; // Start with assumption of max 500 pages
+    let lastValidPage = 0;
+
+    // First, find an upper bound that returns "no SO"
+    while (true) {
+      try {
+        console.log(`[IQRClient] Testing page ${high}...`);
+        const testOrders = await this.request<IQRRawOrder[]>(
+          '/webapi.svc/SO/JSON/GetSOs',
+          { method: 'GET', queryParams: { Page: high, PageSize: 25, SortBy: 0 } }
+        );
+        if (testOrders && testOrders.length > 0) {
+          console.log(`[IQRClient] Page ${high} has data, doubling...`);
+          low = high;
+          high = high * 2;
+          if (high > 2000) {
+            console.log(`[IQRClient] Reached max search limit at page ${high}`);
+            break;
+          }
+        } else {
+          break; // Found empty page
+        }
+      } catch (error: any) {
+        if (error.message?.includes('no SO for the given Page')) {
+          console.log(`[IQRClient] Page ${high} doesn't exist, binary searching between ${low} and ${high}...`);
+          break;
+        }
+        throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    // Binary search between low and high
+    while (low < high - 1) {
+      const mid = Math.floor((low + high) / 2);
+      try {
+        console.log(`[IQRClient] Binary search: testing page ${mid}...`);
+        const testOrders = await this.request<IQRRawOrder[]>(
+          '/webapi.svc/SO/JSON/GetSOs',
+          { method: 'GET', queryParams: { Page: mid, PageSize: 25, SortBy: 0 } }
+        );
+        if (testOrders && testOrders.length > 0) {
+          low = mid;
+          lastValidPage = mid;
+        } else {
+          high = mid;
+        }
+      } catch (error: any) {
+        if (error.message?.includes('no SO for the given Page')) {
+          high = mid;
+        } else {
+          throw error;
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    lastValidPage = low;
+    console.log(`[IQRClient] ✅ Found last valid page: ${lastValidPage}`);
+
+    // STEP 2: Fetch the last 50 pages (most recent ~1250 orders)
+    const START_PAGE = Math.max(0, lastValidPage - 50);
+    const END_PAGE = lastValidPage + 5; // A little buffer
+
+    console.log(`[IQRClient] Fetching RECENT orders: pages ${START_PAGE} to ${END_PAGE}`);
 
     const allOrders: IQRRawOrder[] = [];
     let consecutiveEmptyPages = 0;
-
-    // Fetch only recent pages (PageSize=25)
-    // This skips ~37,500 old orders and only fetches recent ones
-    console.log(`[IQRClient] Starting fetch from page ${START_PAGE} (PageSize=25)...`);
 
     for (let page = START_PAGE; page <= END_PAGE && consecutiveEmptyPages < 10; page++) {
 
