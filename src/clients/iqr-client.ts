@@ -298,11 +298,11 @@ export class IQRClient {
     const allOrders: IQRRawOrder[] = [];
     let consecutiveEmptyPages = 0;
 
-    // Fetch all pages from 0 to 3000 (PageSize=25)
+    // Fetch all pages from 0 to 1500 (PageSize=50)
     // Note: PageSize=100 causes "Object reference" errors on the IQR API
-    console.log('[IQRClient] Starting comprehensive fetch from page 0 (PageSize=25 with cooldowns)...');
+    console.log('[IQRClient] Starting comprehensive fetch from page 0 (PageSize=50 with cooldowns)...');
 
-    for (let page = 0; page <= 3000 && consecutiveEmptyPages < 50; page++) {
+    for (let page = 0; page <= 1500 && consecutiveEmptyPages < 50; page++) {
       // Cooldown every 200 pages (~3-4 minutes) to prevent API throttling
       if (page > 0 && page % 200 === 0) {
         console.log(`[IQRClient] Page ${page}: Cooling down for 90 seconds to prevent API throttling...`);
@@ -331,7 +331,7 @@ export class IQRClient {
             '/webapi.svc/SO/JSON/GetSOs',
             {
               method: 'GET',
-              queryParams: { Page: page, PageSize: 25, SortBy: 0 },
+              queryParams: { Page: page, PageSize: 50, SortBy: 0 },
             }
           );
 
