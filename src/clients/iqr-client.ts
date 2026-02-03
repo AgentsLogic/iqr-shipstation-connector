@@ -297,6 +297,13 @@ export class IQRClient {
     console.log('[IQRClient] Starting comprehensive fetch from page 0...');
 
     for (let page = 0; page <= 3000 && consecutiveEmptyPages < 50; page++) {
+      // Refresh session token every 500 pages (or if expired) to prevent timeout
+      if (page > 0 && page % 500 === 0) {
+        console.log(`[IQRClient] Page ${page}: Refreshing session token to prevent expiry...`);
+        this.sessionToken = null; // Force re-authentication
+        await this.authenticate();
+      }
+
       try {
         const rawOrders = await this.request<IQRRawOrder[]>(
           '/webapi.svc/SO/JSON/GetSOs',
