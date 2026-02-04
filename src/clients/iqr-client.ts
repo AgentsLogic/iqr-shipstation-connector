@@ -293,15 +293,15 @@ export class IQRClient {
     this.sessionToken = null;
     await this.authenticate();
 
-    // TRY SortBy=1 - maybe this sorts NEWEST first!
-    // If newest first, we only need the first few pages to get recent orders
-    const PAGE_SIZE = 30;
-    const SORT_BY = 1; // Try 1 instead of 0 - might be newest first!
+    // Back to working config: PageSize=25, SortBy=0
+    // API fails around order #30000 - need to contact IQR support about this
+    const PAGE_SIZE = 25;
+    const SORT_BY = 0;
     const DELAY_MS = 500;
-    const MAX_PAGES = 100; // Only need first 100 pages if sorted newest first
+    const MAX_PAGES = 2000;
 
-    console.log(`[IQRClient] Trying SortBy=${SORT_BY} (hoping for newest-first ordering)`);
-    console.log(`[IQRClient] PageSize=${PAGE_SIZE}, delay=${DELAY_MS}ms, max ${MAX_PAGES} pages`);
+    console.log(`[IQRClient] Fetching orders: PageSize=${PAGE_SIZE}, SortBy=${SORT_BY}`);
+    console.log(`[IQRClient] Note: API fails around order #30000 - contacting IQR support`);
 
     const allOrders: IQRRawOrder[] = [];
     let consecutiveEmptyPages = 0;
