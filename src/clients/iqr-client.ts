@@ -345,11 +345,17 @@ export class IQRClient {
           consecutiveErrors = 0;
           allOrders.push(...rawOrders);
 
+          const first = rawOrders[0];
           const last = rawOrders[rawOrders.length - 1];
 
-          // Log every 50 pages or first page
-          if (page % 50 === 0 || page === 0) {
-            console.log(`[IQRClient] Page ${page}: ${allOrders.length} total orders, last #${last.so} (${last.saledate})`);
+          // Get min and max order numbers on this page
+          const orderNums = rawOrders.map(o => o.so).filter(n => n != null);
+          const minOrder = Math.min(...orderNums);
+          const maxOrder = Math.max(...orderNums);
+
+          // Log every 25 pages, first page, and pages near the failure point
+          if (page % 25 === 0 || page === 0 || page >= 1070) {
+            console.log(`[IQRClient] Page ${page}: ${rawOrders.length} orders, #${minOrder}-#${maxOrder}, dates: ${first.saledate} to ${last.saledate}`);
           }
 
           success = true;
@@ -374,17 +380,69 @@ export class IQRClient {
       }
     }
 
+    console.log(`[IQRClient] ========== DEBUG ANALYSIS ==========`);
     console.log(`[IQRClient] Total orders fetched: ${allOrders.length}`);
 
-    // Find newest order
-    let newestOrder = allOrders[0];
-    for (const o of allOrders) {
-      if (o.so && o.so > (newestOrder?.so || 0)) {
-        newestOrder = o;
+    // Analyze order numbers
+    const allOrderNums = allOrders.map(o => o.so).filter(n => n != null).sort((a, b) => a - b);
+    if (allOrderNums.length > 0) {
+      console.log(`[IQRClient] Order number range: #${allOrderNums[0]} to #${allOrderNums[allOrderNums.length - 1]}`);
+
+      // Check for gaps in order numbers
+      let gaps = 0;
+      let biggestGap = 0;
+      let biggestGapStart = 0;
+      for (let i = 1; i < allOrderNums.length; i++) {
+        const gap = allOrderNums[i] - allOrderNums[i-1];
+        if (gap > 1) {
+          gaps++;
+          if (gap > biggestGap) {
+            biggestGap = gap;
+            biggestGapStart = allOrderNums[i-1];
+          }
+        }
       }
+      console.log(`[IQRClient] Order number gaps: ${gaps} gaps found`);
+      if (biggestGap > 1) {
+        console.log(`[IQRClient] Biggest gap: ${biggestGap} orders (after #${biggestGapStart})`);
+      }
+
+      // Show last 10 order numbers
+      console.log(`[IQRClient] Last 10 order numbers: ${allOrderNums.slice(-10).join(', ')}`);
+    }
+
+    // Analyze dates
+    const dates = allOrders.map(o => o.saledate).filter(d => d != null);
+    const uniqueYears = [...new Set(dates.map(d => d.split('/')[2]?.split(' ')[0]))].sort();
+    console.log(`[IQRClient] Years in data: ${uniqueYears.join(', ')}`);
+
+    // Count orders by year
+    for (const year of uniqueYears.slice(-3)) { // Last 3 years
+      const count = dates.filter(d => d.includes(year)).length;
+      console.log(`[IQRClient]   ${year}: ${count} orders`);
+    }
+
+    // Find newest order by date
+    let newestOrder = allOrders[0];
+    let newestDate = new Date(0);
+    for (const o of allOrders) {
+      try {
+        const d = new Date(o.saledate);
+        if (d > newestDate) {
+          newestDate = d;
+          newestOrder = o;
+        }
+      } catch {}
     }
     if (newestOrder) {
-      console.log(`[IQRClient] Newest order: #${newestOrder.so} (${newestOrder.saledate})`);
+      console.log(`[IQRClient] Newest order by DATE: #${newestOrder.so} (${newestOrder.saledate})`);
+    }
+
+    // Find highest order number
+    const highestOrderNum = Math.max(...allOrderNums);
+    const highestOrder = allOrders.find(o => o.so === highestOrderNum);
+    if (highestOrder) {
+      console.log(`[IQRClient] Highest order NUMBER: #${highestOrder.so} (${highestOrder.saledate})`);
     }
 
     // Check for Luis's orders (38791, 38792, 38793)
@@ -393,22 +451,22 @@ export class IQRClient {
       console.log(`[IQRClient] 🎉 Found Luis's orders!`);
       luisOrders.forEach(o => console.log(`[IQRClient]   #${o.so}: ${o.saledate} client=${o.clientid} status=${o.status}`));
     } else {
-      console.log(`[IQRClient] ❌ Luis's orders (38791-38793) NOT in API response`);
-      // Check if any orders have LUISTORRES as client
-      const luisClientOrders = allOrders.filter(o => o.clientid?.includes('LUIS'));
-      if (luisClientOrders.length > 0) {
-        console.log(`[IQRClient] Found ${luisClientOrders.length} orders with LUIS in clientid:`);
-        luisClientOrders.slice(0, 5).forEach(o => console.log(`[IQRClient]   #${o.so}: ${o.saledate} client=${o.clientid}`));
-      }
+      console.log(`[IQRClient] ❌ Luis's orders (38791-38793) NOT in fetched data`);
     }
 
     // Check for 2026 orders
     const orders2026 = allOrders.filter(o => o.saledate?.includes('2026'));
     console.log(`[IQRClient] Orders from 2026: ${orders2026.length}`);
-    if (orders2026.length > 0) {
-      console.log(`[IQRClient] 2026 orders sample:`);
-      orders2026.slice(0, 5).forEach(o => console.log(`[IQRClient]   #${o.so}: ${o.saledate} client=${o.clientid}`));
+
+    // Check for 2025 orders
+    const orders2025 = allOrders.filter(o => o.saledate?.includes('2025'));
+    console.log(`[IQRClient] Orders from 2025: ${orders2025.length}`);
+    if (orders2025.length > 0) {
+      console.log(`[IQRClient] Sample 2025 orders:`);
+      orders2025.slice(0, 3).forEach(o => console.log(`[IQRClient]   #${o.so}: ${o.saledate}`));
     }
+
+    console.log(`[IQRClient] ====================================`);
 
     // Transform and return
     if (allOrders.length > 0) {
